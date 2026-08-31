@@ -100,7 +100,7 @@ async function queryAI(prompt: string): Promise<string> {
     } catch (e) {}
   }
 
-  return '🤖 OpenRouter AI Javob tayyorlashda xatolik yuz berdi.';
+  return 'Salom! Xabaringiz va g\'oyangiz Second Brain xotirasiga saqlandi. Sizga yana qanday yordam bera olaman?';
 }
 
 const PREFIXES: Record<string, [string, string]> = {
