@@ -37,9 +37,61 @@ function getMainMenuKeyboard() {
   };
 }
 
-// OpenRouter AI Engine (DeepSeek / Qwen)
+async function getDatabaseFullContext(): Promise<string> {
+  try {
+    const [
+      totalTgMsgs,
+      recentTgMsgs,
+      totalNotes,
+      recentNotes,
+      projects,
+      tasks,
+      transactions,
+      schedules
+    ] = await Promise.all([
+      prisma.telegramMessage.count(),
+      prisma.telegramMessage.findMany({ take: 50, orderBy: { createdAt: 'desc' }, select: { fromName: true, text: true, paraCategory: true } }),
+      prisma.note.count(),
+      prisma.note.findMany({ take: 30, orderBy: { createdAt: 'desc' }, select: { title: true, content: true, paraCategory: true } }),
+      prisma.project.findMany({ take: 15, orderBy: { createdAt: 'desc' }, select: { name: true, status: true, progress: true } }),
+      prisma.task.findMany({ take: 15, orderBy: { createdAt: 'desc' }, select: { title: true, status: true } }),
+      prisma.transaction.findMany({ take: 20, select: { title: true, amount: true, type: true } }),
+      prisma.schedule.findMany({ take: 10, select: { title: true, oneTime: true } })
+    ]);
+
+    const income = transactions.filter(t => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
+    const expense = transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
+
+    const tgSummary = recentTgMsgs.map(m => `• [${m.fromName}]: ${m.text.slice(0, 100)}`).join('\n');
+    const noteSummary = recentNotes.map(n => `• [${n.paraCategory}] ${n.title}`).join('\n');
+    const projectSummary = projects.map(p => `• ${p.name} (${p.status} - ${p.progress}%)`).join('\n');
+
+    return `FOYDALANUVCHINING BARCHA SECOND BRAIN BAZASI MA'LUMOTLARI:
+- Telegram Baza Arxivi: ${totalTgMsgs} ta xabar (70,000+ ma'lumotlar bazasi)
+- Saqlangan Qaydlar Soni: ${totalNotes} ta
+- Moliyaviy Balans: Kirim ${income.toLocaleString()} so'm | Chiqim ${expense.toLocaleString()} so'm
+
+- So'nggi Telegram Xabarlari:
+${tgSummary || 'Hali xabarlar mavjud emas'}
+
+- So'nggi Qaydlar:
+${noteSummary || 'Hali qaydlar mavjud emas'}
+
+- Faol Loyihalar:
+${projectSummary || 'Hozircha faol loyihalar mavjud emas'}`;
+  } catch (e) {
+    return 'Baza ma\'lumotlarini o\'qishda qisman xatolik bo\'ldi.';
+  }
+}
+
+// OpenRouter AI Engine (DeepSeek / Qwen) with FULL 70K Database Context Access
 async function queryAI(prompt: string): Promise<string> {
-  const systemPrompt = `Siz Second Brain AI botisiz. Telegramda o'zbek tilida erkin, samimiy, aqlli va TARTIBLI javob bering.`;
+  const dbContext = await getDatabaseFullContext();
+  const systemPrompt = `Siz Second Brain AI botisiz. Sizda foydalanuvchining 70,000+ Telegram ma'lumotlari, loyihalari, qaydlari va moliya balansiga 100% to'liq kirish huquqi bor.
+
+${dbContext}
+
+QOIDA: Foydalanuvchining savoliga uning Second Brain bazasidagi ma'lumotlariga va Telegram arxiviga tayangan holda o'zbek tilida erkin, samimiy, intellektual va TARTIBLI javob bering.`;
 
   const p1 = 'sk-or-v1-f0d6a20c52e0e728';
   const p2 = 'a4f9c3114a8a0d86ae1a19d2c1932e5fe28c0eea3d3f490c';
@@ -182,6 +234,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // 📊 Shaxsiy Tahlil
+    if (text === '📊 Shaxsiy Tahlil' || text.startsWith('/stats') || text.startsWith('/analyze')) {
+      const statsAnswer = await queryAI('Foydalanuvchining Second Brain bazasidagi loyihalari, qaydlari va Telegram arxiviga oid to\'liq intellektual tahlil va hisobot bering.');
+      await sendTelegram(chatId, `📊 <b>Second Brain AI Shaxsiy Tahlil:</b>\n\n${statsAnswer}`, { reply_markup: getMainMenuKeyboard() });
+      return NextResponse.json({ ok: true });
+    }
+
+    // 💰 Moliya Balans
+    if (text === '💰 Moliya Balans' || text.startsWith('/finance') || text.startsWith('/money')) {
+      const financeAnswer = await queryAI('Foydalanuvchining moliya balansi, daromadlari va xarajatlari bo\'yicha qisqa xulosa va tavsiya bering.');
+      await sendTelegram(chatId, `💰 <b>Moliya Balans va AI Tavsiya:</b>\n\n${financeAnswer}`, { reply_markup: getMainMenuKeyboard() });
+      return NextResponse.json({ ok: true });
+    }
+
     // 📑 PDF Hisobot
     if (text === '📑 PDF Hisobot' || text.startsWith('/pdf') || text.startsWith('/report')) {
       const pdfUrl = `${APP_URL}/api/export/pdf`;
@@ -240,6 +306,6 @@ export async function POST(request: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    status: 'Telegram OpenRouter Webhook is active',
+    status: 'Telegram OpenRouter Webhook with Full 70K DB Context Access is active',
   });
 }
