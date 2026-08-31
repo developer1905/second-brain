@@ -42,51 +42,65 @@ export async function POST(req: NextRequest) {
 
     const userQuery = content.trim();
 
-    // 1. Dynamic Keyword Extraction from userQuery for 70k+ Deep DB Search
+    // 1. Filter out meta stop words from searchKeywords
+    const stopWords = new Set([
+      'haqida', 'bilan', 'nima', 'menga', 'mening', 'oqlib', 'ber', 'ayt', 'salom', 'qanday',
+      'nimalar', 'gaplashganman', 'telegram', 'bot', 'xabar', 'xabarlarim', 'xabarlarimdan',
+      'bolgan', 'bolganlar', 'eng', 'muhim', 'muhimlarini', 'suhbatlarimdan', 'suhbatlarim', 'oqib'
+    ]);
+
     const searchWords = userQuery
       .toLowerCase()
       .replace(/[^\w\s\u0400-\u04FF]/gi, ' ')
       .split(/\s+/)
-      .filter((w) => w.length > 2 && !['haqida', 'bilan', 'nima', 'menga', 'mening', 'oqlib', 'ber', 'ayt', 'salom', 'qanday', 'nimalar', 'gaplashganman'].includes(w));
+      .filter((w) => w.length > 2 && !stopWords.has(w));
 
-    const tgSearchConditions = searchWords.map((w) => ({
+    // Priority 1: Match by Chat Name / From Name (e.g. Kamol, Ramazon, etc.)
+    const nameConditions = searchWords.map((w) => ({
       OR: [
-        { text: { contains: w } },
-        { fromName: { contains: w } },
         { chatName: { contains: w } },
+        { fromName: { contains: w } },
       ],
     }));
 
-    const noteSearchConditions = searchWords.map((w) => ({
+    // Priority 2: Match by Message Text Content
+    const textConditions = searchWords.map((w) => ({
+      text: { contains: w },
+    }));
+
+    const noteConditions = searchWords.map((w) => ({
       OR: [
         { title: { contains: w } },
         { content: { contains: w } },
       ],
     }));
 
-    // 2. Fetch Targeted Search Matches + System Stats simultaneously
-    const [matchedTgMsgs, matchedNotes, recentTgMsgs, totalTgCount, allNotes, projects, transactions] = await Promise.all([
-      tgSearchConditions.length > 0
+    // Fetch targeted chat matches with Person Name Priority
+    const [nameMatchedTg, textMatchedTg, matchedNotes, totalTgCount, allNotes, projects, transactions] = await Promise.all([
+      nameConditions.length > 0
         ? prisma.telegramMessage.findMany({
-            where: { OR: tgSearchConditions.flatMap((c) => c.OR) },
-            take: 60,
+            where: { OR: nameConditions.flatMap((c) => c.OR) },
+            take: 40,
             orderBy: { createdAt: 'desc' },
             select: { fromName: true, chatName: true, text: true, date: true },
           })
         : [],
-      noteSearchConditions.length > 0
+      textConditions.length > 0
+        ? prisma.telegramMessage.findMany({
+            where: { OR: textConditions },
+            take: 30,
+            orderBy: { createdAt: 'desc' },
+            select: { fromName: true, chatName: true, text: true, date: true },
+          })
+        : [],
+      noteConditions.length > 0
         ? prisma.note.findMany({
-            where: { OR: noteSearchConditions.flatMap((c) => c.OR) },
+            where: { OR: noteConditions.flatMap((c) => c.OR) },
             take: 30,
             orderBy: { createdAt: 'desc' },
             select: { title: true, content: true, paraCategory: true },
           })
         : [],
-      prisma.telegramMessage.findMany({
-        take: 40,
-        orderBy: { createdAt: 'desc' },
-        select: { fromName: true, text: true, createdAt: true, paraCategory: true },
-      }),
       prisma.telegramMessage.count(),
       prisma.note.findMany({
         take: 20,
@@ -97,42 +111,48 @@ export async function POST(req: NextRequest) {
       prisma.transaction.findMany({ take: 15, select: { title: true, amount: true, type: true } }),
     ]);
 
+    // Merge and deduplicate matched Telegram messages
+    const mergedTgMsgsMap = new Map<string, typeof nameMatchedTg[0]>();
+    nameMatchedTg.forEach((m) => mergedTgMsgsMap.set(`${m.chatName}:${m.text}`, m));
+    textMatchedTg.forEach((m) => {
+      if (!mergedTgMsgsMap.has(`${m.chatName}:${m.text}`)) {
+        mergedTgMsgsMap.set(`${m.chatName}:${m.text}`, m);
+      }
+    });
+    const finalMatchedTgMsgs = Array.from(mergedTgMsgsMap.values());
+
     const income = transactions.filter((t) => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
     const expense = transactions.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
 
     // Format Targeted Search Matches
-    const searchTgResultFormatted = matchedTgMsgs.length > 0
-      ? matchedTgMsgs.map((m) => `• [${m.date?.slice(0, 10) || 'Telegram'}] ${m.chatName || m.fromName}: "${m.text}"`).join('\n')
+    const searchTgResultFormatted = finalMatchedTgMsgs.length > 0
+      ? finalMatchedTgMsgs.map((m) => `• [${m.date?.slice(0, 10) || 'Telegram'}] ${m.chatName || m.fromName}: "${m.text}"`).join('\n')
       : "So'rov kalit so'zi bo'yicha maxsus Telegram suhbatlari topilmadi.";
 
     const searchNoteResultFormatted = matchedNotes.length > 0
       ? matchedNotes.map((n) => `• [${n.paraCategory}] Sarlavha: "${n.title}" | Matn: "${n.content}"`).join('\n')
       : '';
 
-    const recentTgList = recentTgMsgs.map((m) => `• [${m.fromName}]: ${m.text}`).join('\n');
     const generalNoteList = allNotes.map((n) => `• [${n.paraCategory}] ${n.title}: ${n.content}`).join('\n');
     const projectList = projects.map((p) => `• ${p.name} (${p.status} - ${p.progress}%)`).join('\n');
 
     const systemMsg = `Siz Second Brain OpenRouter AI yordamchisiz. Foydalanuvchining 70,500+ ma'lumotlar arxivi va Telegram suhbatlariga 100% to'liq chuqur qidiruv huquqiga egasiz.
 
-FOYDALANUVCHINING 70,500+ TELEGRAM BAZASIDAN QIDIRUV VA TAHLIL NATIJALARI:
+FOYDALANUVCHINING 70,500+ TELEGRAM BAZASIDAGI SO'ROV BO'YICHA ANIQ MATCH SUHBATLARI:
 - Telegram Baza Arxivi: ${totalTgCount} ta xabar
 - Moliya Balansi: Kirim ${income.toLocaleString()} so'm | Chiqim ${expense.toLocaleString()} so'm
 
-🔎 SO'ROV BO'YICHA TELEGRAM BAZASIDAN TOPILGAN ANIQ SUHBATLAR (${matchedTgMsgs.length} ta):
+🔎 SO'ROV BO'YICHA TELEGRAM BAZASIDAN TOPILGAN ANIQ SUHBATLAR MATNI (${finalMatchedTgMsgs.length} ta xabar):
 ${searchTgResultFormatted}
 
 ${searchNoteResultFormatted ? `🔎 SO'ROV BO'YICHA TOPILGAN QAYDLAR:\n${searchNoteResultFormatted}\n` : ''}
 
-📌 SO'NGGI TELEGRAM SUHBATLARI:
-${recentTgList}
-
-📌 SO'NGGI QAYDLAR VA LOYIHALAR:
+📌 BAZADAGI LOYIHALAR VA QAYDLAR:
 ${generalNoteList}
 ${projectList}
 
 QOIDA:
-Yuqoridagi 70,500+ Telegram suhbatlari va baza ma'lumotlariga tayanib, foydalanuvchining savoliga o'zbek tilida erkin, samimiy, aniq va TARTIBLI javob bering.`;
+Yuqoridagi Telegram suhbatlari matnlariga va baza ma'lumotlariga tayanib, foydalanuvchining savoliga o'zbek tilida erkin, samimiy, aniq va TARTIBLI javob bering. Suhbatingizda o'sha shaxs bilan gaplashilgan aniq jumlalarni va mavzularni keltirib o'ting.`;
 
     // Save user message to database
     await prisma.chatMessage.create({
