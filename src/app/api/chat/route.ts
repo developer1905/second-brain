@@ -89,30 +89,72 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     let aiReply = '';
     const cleanUserKey = userApiKey?.trim() || '';
 
-    // 1. Google Gemini API (AIzaSy...)
-    const geminiKey = cleanUserKey.startsWith('AIzaSy') ? cleanUserKey : getGeminiApiKey();
-    if (geminiKey && geminiKey.startsWith('AIzaSy')) {
-      try {
-        const fullPrompt = `${systemMsg}\n\nFOYDALANUVCHI SAVOLI:\n${userQuery}`;
-        const gRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
-          {
+    // 1. OpenRouter API Engine (sk-or-v1-...) — 50+ Models Supported!
+    const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
+    if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
+      const openrouterModels = [
+        'meta-llama/llama-3.3-70b-instruct:free',
+        'qwen/qwen-2.5-coder-32b-instruct:free',
+        'mistralai/mistral-7b-instruct:free',
+      ];
+      for (const model of openrouterModels) {
+        try {
+          const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openrouterKey}`,
+              'HTTP-Referer': 'https://second-brain-ai-uob8.onrender.com',
+              'X-Title': 'Second Brain AI',
+            },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: fullPrompt }] }],
+              model,
+              messages: [
+                { role: 'system', content: systemMsg },
+                ...history.slice(-6).map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
+                { role: 'user', content: userQuery },
+              ],
+              temperature: 0.7,
             }),
+          });
+          if (orRes.ok) {
+            const orData = await orRes.json();
+            const text = orData.choices?.[0]?.message?.content;
+            if (text) {
+              aiReply = text;
+              break;
+            }
           }
-        );
-        if (gRes.ok) {
-          const gData = await gRes.json();
-          const text = gData.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) aiReply = text;
-        }
-      } catch (e) {}
+        } catch (e) {}
+      }
     }
 
-    // 2. GROQ API (gsk_...) - High Speed Qwen 3.8 27B & GPT-OSS Engine
+    // 2. Google Gemini API (AIzaSy...)
+    if (!aiReply) {
+      const geminiKey = cleanUserKey.startsWith('AIzaSy') ? cleanUserKey : getGeminiApiKey();
+      if (geminiKey && geminiKey.startsWith('AIzaSy')) {
+        try {
+          const fullPrompt = `${systemMsg}\n\nFOYDALANUVCHI SAVOLI:\n${userQuery}`;
+          const gRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: fullPrompt }] }],
+              }),
+            }
+          );
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const text = gData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) aiReply = text;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 3. GROQ API (gsk_...)
     if (!aiReply) {
       const groqKey = cleanUserKey.startsWith('gsk_') ? cleanUserKey : getGroqApiKey();
       if (groqKey && groqKey.startsWith('gsk_')) {
@@ -150,51 +192,13 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
       }
     }
 
-    // 3. OpenRouter API Fallback
     if (!aiReply) {
-      const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
-      if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
-        const openrouterModels = ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen-2.5-coder-32b-instruct:free'];
-        for (const model of openrouterModels) {
-          try {
-            const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openrouterKey}`,
-                'HTTP-Referer': 'https://second-brain-ai-uob8.onrender.com',
-                'X-Title': 'Second Brain AI',
-              },
-              body: JSON.stringify({
-                model,
-                messages: [
-                  { role: 'system', content: systemMsg },
-                  ...history.slice(-6).map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
-                  { role: 'user', content: userQuery },
-                ],
-                temperature: 0.7,
-              }),
-            });
-            if (orRes.ok) {
-              const orData = await orRes.json();
-              const text = orData.choices?.[0]?.message?.content;
-              if (text) {
-                aiReply = text;
-                break;
-              }
-            }
-          } catch (e) {}
-        }
-      }
-    }
+      aiReply = `⚠️ **Yaroqli AI API Kaliti Kiritilmadi.**
 
-    if (!aiReply) {
-      aiReply = `⚠️ **AI Kaliti (Gemini yoki Groq) Kiritilmadi.**
-
-Oddiy va bepul Gemini API kalitini olish uchun:
-1️⃣ **https://aistudio.google.com/app/apikey** saytiga kiring (Google account bilan 1-chertishda kirasiz).
-2️⃣ **Create API Key** tugmasini bosib, \`AIzaSy...\` kalitingizni nusxalang.
-3️⃣ Kalitni chat tepadagi **API Key** katagiga yoki **[Sozlamalar](/settings)** sahifasiga kiriting. AI darhol ishlashni boshlaydi! 🚀`;
+Eng tez va qulay **OpenRouter AI** kalitini olish uchun:
+1️⃣ **https://openrouter.ai/keys** saytiga kiring (Google bilan 1-chertishda kiriladi).
+2️⃣ **Create Key** tugmasini bosib, \`sk-or-v1-...\` kalitingizni nusxalang.
+3️⃣ Kalitni chat tepadagi **API Key** katagiga yoki **[Sozlamalar](/settings)** sahifasiga kiriting. AI darhol muloqot qiladi! 🚀`;
     }
 
     // Save assistant reply to database
