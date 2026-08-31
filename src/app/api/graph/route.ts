@@ -19,6 +19,10 @@ export async function GET(request: Request) {
     // Heavy models only in full mode
     const includeHeavy = isFull;
 
+    const limitParam = searchParams.get('limit');
+    const customLimit = limitParam ? parseInt(limitParam) : 1000;
+    const tgLimit     = limitParam ? Math.min(parseInt(limitParam), 2000) : 500;
+
     const [
       notes,
       projects,
@@ -34,7 +38,7 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       includeNotes
         ? prisma.note.findMany({
-            take: 1000,
+            take: customLimit,
             orderBy: { createdAt: 'desc' },
             include: { project: true, area: true },
           })
@@ -43,21 +47,20 @@ export async function GET(request: Request) {
         ? prisma.project.findMany({ include: { tasks: true, area: true } })
         : [],
       prisma.area.findMany(),
-      prisma.resource.findMany({ take: 500 }),
+      prisma.resource.findMany({ take: customLimit }),
       includeTelegram
         ? prisma.telegramMessage.findMany({
-            take: 500,
+            take: tgLimit,
             orderBy: { createdAt: 'desc' },
           })
         : [],
       includeGithub ? prisma.githubRepo.findMany() : [],
       includeBooks
-        ? prisma.book.findMany({ take: 200 })
+        ? prisma.book.findMany({ take: 300 })
         : [],
-      // Finance/Habit/Flashcard included by default so all nodes appear
-      prisma.transaction.findMany({ take: 300, orderBy: { createdAt: 'desc' } }),
+      prisma.transaction.findMany({ take: customLimit, orderBy: { createdAt: 'desc' } }),
       prisma.habit.findMany({ orderBy: { createdAt: 'desc' } }),
-      prisma.flashcard.findMany({ take: 300, orderBy: { createdAt: 'desc' } }),
+      prisma.flashcard.findMany({ take: customLimit, orderBy: { createdAt: 'desc' } }),
       prisma.backlinkEdge.findMany(),
     ]);
 

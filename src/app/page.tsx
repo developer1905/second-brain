@@ -75,12 +75,13 @@ export default function Home() {
   const [isFullMode, setIsFullMode] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
-  const fetchGraph = useCallback(async (filters?: any, fullMode = false) => {
+  const fetchGraph = useCallback(async (filters?: any, fullMode = false, maxDensity = false) => {
     setLoading(true);
-    setLoadingMsg(fullMode ? 'To\'liq dataset yuklanmoqda...' : 'Neyron tarmoq yuklanmoqda...');
+    setLoadingMsg(maxDensity ? '2,000+ Neyronlar yuklanmoqda...' : fullMode ? 'To\'liq dataset yuklanmoqda...' : 'Neyron tarmoq yuklanmoqda...');
     try {
       const params = new URLSearchParams();
-      if (fullMode) params.set('mode', 'full');
+      if (fullMode || maxDensity) params.set('mode', 'full');
+      if (maxDensity) params.set('limit', '2000');
       if (filters) {
         if (filters.includeNotes !== undefined) params.set('includeNotes', filters.includeNotes.toString());
         if (filters.includeProjects !== undefined) params.set('includeProjects', filters.includeProjects.toString());
@@ -168,14 +169,17 @@ export default function Home() {
           </div>
 
           {/* Load Full button */}
-          {!isFullMode && !loading && (
+          {!loading && (
             <button
-              onClick={handleLoadFull}
-              title="Barcha ma'lumotlarni yuklash (Finance, Odat, Flashcard)"
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 hover:bg-purple-500/30 transition font-bold text-[10px]"
+              onClick={() => {
+                setIsFullMode(true);
+                fetchGraph(undefined, true, true);
+              }}
+              title="Maksimal 2,000+ neyronlarni yuklash"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 transition font-bold text-[10px]"
             >
               <Expand className="w-3 h-3" />
-              <span className="hidden sm:inline">To&apos;liq</span>
+              <span className="hidden sm:inline">Maksimal (2k+)</span>
             </button>
           )}
 
