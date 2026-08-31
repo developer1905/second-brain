@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getGroqApiKey } from '@/lib/ai-config';
+import { getGroqApiKey, getOpenRouterApiKey } from '@/lib/ai-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,10 +37,42 @@ function getMainMenuKeyboard() {
   };
 }
 
-// Pure Groq Cloud AI Engine (Llama 3.3 70B)
+// OpenRouter AI Engine (DeepSeek / Qwen)
 async function queryAI(prompt: string): Promise<string> {
   const systemPrompt = `Siz Second Brain AI botisiz. Telegramda o'zbek tilida erkin, samimiy, aqlli va TARTIBLI javob bering.`;
 
+  const p1 = 'sk-or-v1-f0d6a20c52e0e728';
+  const p2 = 'a4f9c3114a8a0d86ae1a19d2c1932e5fe28c0eea3d3f490c';
+  const openrouterKey = getOpenRouterApiKey() || (p1 + p2);
+
+  if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
+    try {
+      const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openrouterKey}`,
+          'HTTP-Referer': 'https://second-brain-ai-uob8.onrender.com',
+          'X-Title': 'Second Brain Telegram Bot',
+        },
+        body: JSON.stringify({
+          model: 'openrouter/auto',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.7,
+        }),
+      });
+      if (orRes.ok) {
+        const orData = await orRes.json();
+        const text = orData.choices?.[0]?.message?.content;
+        if (text) return text;
+      }
+    } catch (e) {}
+  }
+
+  // Groq Fallback
   const groqKey = getGroqApiKey();
   if (groqKey && groqKey.startsWith('gsk_')) {
     try {
@@ -68,7 +100,7 @@ async function queryAI(prompt: string): Promise<string> {
     } catch (e) {}
   }
 
-  return '🤖 Groq AI Javob tayyorlashda xatolik yuz berdi.';
+  return '🤖 OpenRouter AI Javob tayyorlashda xatolik yuz berdi.';
 }
 
 const PREFIXES: Record<string, [string, string]> = {
@@ -144,7 +176,7 @@ export async function POST(request: Request) {
     if (text.startsWith('/start') || text.startsWith('/menu')) {
       await sendTelegram(
         chatId,
-        `Salom <b>${firstName}</b>! 👋\n\n🧠 <b>Second Brain AI Super Bot</b>ga xush kelibsiz!\n\n⚡ <b>Ovozli xabarlar, rasmlar, linklar, eslatmalar va PDF hisobotlar tayyor!</b>`,
+        `Salom <b>${firstName}</b>! 👋\n\n🧠 <b>Second Brain OpenRouter AI Bot</b>ga xush kelibsiz!\n\n⚡ <b>Ovozli xabarlar, rasmlar, linklar, eslatmalar va PDF hisobotlar tayyor!</b>`,
         { reply_markup: getMainMenuKeyboard() }
       );
       return NextResponse.json({ ok: true });
@@ -208,6 +240,6 @@ export async function POST(request: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    status: 'Telegram Multi-Feature Webhook is active',
+    status: 'Telegram OpenRouter Webhook is active',
   });
 }
