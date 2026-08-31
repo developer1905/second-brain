@@ -8,17 +8,19 @@ const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const PROD_DB   = path.join(__dirname, '..', 'prisma', 'prod.db');
-const BLANK_DB  = path.join(__dirname, '..', 'prisma', 'blank_template.db');
+const PROD_DB    = path.join(__dirname, '..', 'prisma', 'prod.db');
+const INITIAL_DB = path.join(__dirname, '..', 'prisma', 'initial_data.db');
+const BLANK_DB   = path.join(__dirname, '..', 'prisma', 'blank_template.db');
 
-// 1. Agar prod.db mavjud bo'lmasa — blank template dan boshlash
+// 1. Agar prod.db mavjud bo'lmasa — initial_data.db dan nusxa olish
 if (!fs.existsSync(PROD_DB)) {
-  if (fs.existsSync(BLANK_DB)) {
-    console.log('📋 blank_template.db dan prod.db yaratilmoqda...');
-    fs.copyFileSync(BLANK_DB, PROD_DB);
-    console.log('✅ prod.db yaratildi.');
+  const sourceDb = fs.existsSync(INITIAL_DB) ? INITIAL_DB : BLANK_DB;
+  if (fs.existsSync(sourceDb)) {
+    console.log(`📋 ${path.basename(sourceDb)} dan prod.db yaratilmoqda...`);
+    fs.copyFileSync(sourceDb, PROD_DB);
+    console.log('✅ prod.db nusxalandi va yaratildi.');
   } else {
-    console.log('⚠️  blank_template.db topilmadi, yangi DB yaratiladi.');
+    console.log('⚠️  Baza nusxasi topilmadi, yangi DB yaratiladi.');
   }
 } else {
   console.log('✅ prod.db mavjud, davom etilmoqda.');
