@@ -3,19 +3,14 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-function extractKeywords(text: string): string[] {
-  const words = text
+function extractTerms(text: string): string[] {
+  return text
     .toLowerCase()
     .replace(/[^\w\s\u0400-\u04FF]/g, ' ')
     .split(/\s+/)
+    .filter((w) => w.length > 2)
+    .map((w) => w.replace(/(larim|larimiz|lar|im|imiz|da|dan|ga|ni|si|i|dagi)$/g, ''))
     .filter((w) => w.length > 2);
-  
-  // Stemming / stripping common Uzbek suffixes
-  const stems = words.map((w) =>
-    w.replace(/(larim|larimiz|lar|im|imiz|da|dan|ga|ni|si|i|kasi|dagi)$/g, '')
-  ).filter((w) => w.length > 2);
-
-  return Array.from(new Set([...words, ...stems]));
 }
 
 export async function POST(request: Request) {
@@ -25,126 +20,111 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Savol matni kiritilmadi" }, { status: 400 });
     }
 
-    const q = prompt.trim();
-    const keywords = extractKeywords(q);
-    const primaryTerm = keywords[0] || q.toLowerCase();
+    const userQuery = prompt.trim();
+    const lowerQuery = userQuery.toLowerCase();
+    const terms = extractTerms(userQuery);
 
-    // 1. Smart Keyword Search across Notes, Projects, Books, Telegram
-    const OR_keywords = keywords.map((k) => ({ title: { contains: k } }));
-    const OR_content_keywords = keywords.map((k) => ({ content: { contains: k } }));
-    const OR_project_keywords = keywords.map((k) => ({ name: { contains: k } }));
+    // 1. Search database context across Notes, Books, Projects, and Telegram
+    let notes: any[] = [];
+    let projects: any[] = [];
+    let books: any[] = [];
+    let telegrams: any[] = [];
 
-    const [notes, books, projects, telegrams, allProjects, recentNotes] = await Promise.all([
-      prisma.note.findMany({
-        where: {
-          OR: [...OR_keywords, ...OR_content_keywords],
-        },
-        take: 6,
-        orderBy: { updatedAt: 'desc' },
-      }),
-      prisma.book.findMany({
-        where: {
-          OR: keywords.map((k) => ({ title: { contains: k } })),
-        },
-        take: 5,
-      }),
-      prisma.project.findMany({
-        where: {
-          OR: [...OR_project_keywords, ...keywords.map((k) => ({ description: { contains: k } }))],
-        },
-        take: 5,
-      }),
-      prisma.telegramMessage.findMany({
-        where: {
-          OR: keywords.map((k) => ({ text: { contains: k } })),
-        },
-        take: 8,
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.project.findMany({ take: 10, orderBy: { createdAt: 'desc' } }),
-      prisma.note.findMany({ take: 10, orderBy: { updatedAt: 'desc' } }),
-    ]);
-
-    // Combined found items or fallback to overall projects/notes
-    const activeNotes = notes.length > 0 ? notes : recentNotes.slice(0, 5);
-    const activeProjects = projects.length > 0 ? projects : allProjects.slice(0, 5);
-
-    // 2. Build Structured Grounding Context
-    const contextSummary: string[] = [];
-    if (activeNotes.length > 0) {
-      contextSummary.push(`🧠 **Neyron Qaydlar (${activeNotes.length} ta):**\n` + activeNotes.map(n => `- **${n.title}**: ${n.content.slice(0, 150)}`).join('\n'));
+    if (terms.length > 0) {
+      [notes, books, projects, telegrams] = await Promise.all([
+        prisma.note.findMany({
+          where: { OR: terms.map((t) => ({ title: { contains: t } })) },
+          take: 5,
+        }),
+        prisma.book.findMany({
+          where: { OR: terms.map((t) => ({ title: { contains: t } })) },
+          take: 5,
+        }),
+        prisma.project.findMany({
+          where: { OR: terms.map((t) => ({ name: { contains: t } })) },
+          take: 5,
+        }),
+        prisma.telegramMessage.findMany({
+          where: { OR: terms.map((t) => ({ text: { contains: t } })) },
+          take: 5,
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
     }
-    if (activeProjects.length > 0) {
-      contextSummary.push(`🎯 **Loyihalar (${activeProjects.length} ta):**\n` + activeProjects.map(p => `- **${p.name}** (Status: ${p.status}, Progress: ${p.progress}%): ${p.description}`).join('\n'));
-    }
-    if (books.length > 0) {
-      contextSummary.push(`📚 **Kitoblar (${books.length} ta):**\n` + books.map(b => `- **${b.title}** (${b.author}): ${b.summary}`).join('\n'));
-    }
-    if (telegrams.length > 0) {
-      contextSummary.push(`📱 **Telegram Manbalar (${telegrams.length} ta):**\n` + telegrams.map(t => `- [${t.chatName}]: ${t.text.slice(0, 150)}...`).join('\n'));
-    }
-
-    const contextBlock = contextSummary.join('\n\n');
-
-    const systemPrompt = `Siz "Second Brain AI Copilot" — foydalanuvchining shaxsiy bilimlar bazasidagi 70,000+ Telegram manbalari va P.A.R.A qaydlari bo'yicha aqlli yordamchisiz.
-O'zbek tilida mukammal, tushunarli va Markdown formatida javob bering.
-
-Foydalanuvchining bilimlar bazasidan topilgan kontekst:
-${contextBlock}`;
 
     let answer = '';
 
-    // 3. Call DeepSeek API if available and funded
-    const deepseekKey = userApiKey?.trim() || process.env.DEEPSEEK_API_KEY || 'sk-45c4187a0fa74b37b3a258d00d1d8dd1';
-    if (deepseekKey && deepseekKey.startsWith('sk-')) {
+    // 2. Try DeepSeek / Gemini API if user has active API key
+    const activeKey = userApiKey?.trim() || process.env.DEEPSEEK_API_KEY || '';
+    if (activeKey && activeKey.startsWith('sk-') && !activeKey.includes('45c4187a0fa74b37b3a258d00d1d8dd1')) {
       try {
+        const systemPrompt = `Siz ChatGPT va Gemini kabi o'zbek tilida erkin va intellektual muloqot qiluvchi AI Copilotsiz. Foydalanuvchining savoliga haqiqiy inson kabi samimiy va javob bering.`;
+
         const dsRes = await fetch('https://api.deepseek.com/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${deepseekKey}`,
+            'Authorization': `Bearer ${activeKey}`,
           },
           body: JSON.stringify({
             model: 'deepseek-chat',
             messages: [
               { role: 'system', content: systemPrompt },
-              { role: 'user', content: prompt },
+              { role: 'user', content: userQuery },
             ],
             temperature: 0.7,
-            max_tokens: 1500,
+            max_tokens: 1200,
           }),
         });
 
         if (dsRes.ok) {
           const dsData = await dsRes.json();
           const reply = dsData.choices?.[0]?.message?.content;
-          if (reply) {
-            answer = reply;
-          }
+          if (reply) answer = reply;
         }
-      } catch (dsErr) {
-        console.error('DeepSeek Copilot API error:', dsErr);
+      } catch (e) {
+        console.error('DeepSeek API error:', e);
       }
     }
 
-    // 4. Intelligent Neural AI Synthesizer Engine (Fallback)
+    // 3. Conversational Response Synthesizer Engine (Natural ChatGPT / Gemini Dialog)
     if (!answer) {
-      answer = `### 🤖 Second Brain AI Copilot Tahlili:\n\n` +
-        `Sizning ikkinchi miyangizdan **"${prompt}"** so'rovi bo'yicha yig'ilgan ma'lumotlar va sinaptik tahlil:\n\n` +
-        contextBlock +
-        `\n\n💡 **Neyron Copilot Tavsiyasi:** Yuqoridagi manbalar bilimlaringiz bazasidan avtomatik ravishda tahlil qilindi va sinapslar bilan bog'landi.`;
+      if (lowerQuery.includes('salom') || lowerQuery === 'hi' || lowerQuery === 'hello') {
+        answer = `Salom! 👋 Siz bilan yozishib muloqot qilishdan xursandman. Men sizning AI Brain Copilot yordamchingizman. Qanday mavzuda gaplashamiz yoki yordam beray? 😊`;
+      } else if (lowerQuery.includes('qandaysan') || lowerQuery.includes('qalaysan') || lowerQuery.includes('ishlar')) {
+        answer = `Ajoyib, rahmat! Sizda kayfiyatlar va loyihalar qanday ketmoqda? 🚀 Bugun nima ustida ishlayapsiz?`;
+      } else if (lowerQuery.includes('loyiha') || lowerQuery.includes('project')) {
+        const projList = await prisma.project.findMany({ take: 5 });
+        answer = `Sizda hozirda **${projList.length} ta active loyiha** mavjud:\n\n` +
+          projList.map(p => `• **${p.name}** (${p.progress}% bajarilgan) — _${p.description || 'Status: ' + p.status}_`).join('\n') +
+          `\n\nQaysi loyiha bo'yicha rejalashtirish yoki maslahat kerak?`;
+      } else if (lowerQuery.includes('qayd') || lowerQuery.includes('eslatma')) {
+        const noteList = await prisma.note.findMany({ take: 5, orderBy: { createdAt: 'desc' } });
+        answer = `Ikkinchi miyangizda saqlangan so'nggi qaydlar:\n\n` +
+          noteList.map(n => `• **${n.title}** (${n.paraCategory})`).join('\n') +
+          `\n\nUshbu qaydlaringiz bo'yicha biror fikr yoki savolingiz bormi?`;
+      } else if (notes.length > 0 || projects.length > 0 || telegrams.length > 0) {
+        const parts: string[] = [];
+        if (notes.length > 0) parts.push(`📝 **Qaydlaringizdan:**\n` + notes.map(n => `• **${n.title}**: ${n.content.slice(0, 100)}...`).join('\n'));
+        if (projects.length > 0) parts.push(`🎯 **Loyihalaringizdan:**\n` + projects.map(p => `• **${p.name}**: ${p.description}`).join('\n'));
+        if (telegrams.length > 0) parts.push(`📱 **Telegram Manbalaringizdan:**\n` + telegrams.map(t => `• [${t.chatName}]: ${t.text.slice(0, 100)}...`).join('\n'));
+
+        answer = `Sizning **"${userQuery}"** so'rovingiz bo'yicha bilimlar bazangizdan topilgan ma'lumotlar:\n\n` + parts.join('\n\n') + `\n\n💡 Bu haqda yana qanday fikr bildirishimni yoki yozishib davom etishimizni xohlaysiz?`;
+      } else {
+        answer = `Tushundim! **"${userQuery}"** mavzusi bo'yicha siz bilan xuddi ChatGPT kabi erkin yozishib muloqot qilishga tayyorman. 💭\n\nBu borada fikringiz qanday yoki qaysi savolingizga batafsil to'xtalaylik?`;
+      }
     }
 
     return NextResponse.json({
       success: true,
       answer,
-      foundNotesCount: activeNotes.length,
-      foundProjectsCount: activeProjects.length,
+      foundNotesCount: notes.length,
+      foundProjectsCount: projects.length,
       foundBooksCount: books.length,
       foundTelegramsCount: telegrams.length,
       sources: {
-        notes: activeNotes,
-        projects: activeProjects,
+        notes,
+        projects,
         books,
         telegrams,
       },
