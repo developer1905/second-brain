@@ -26,9 +26,10 @@ if os.path.exists(ENV_LOCAL):
                 k, v = line.split("=", 1)
                 os.environ[k.strip()] = v.strip().strip('"').strip("'")
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-ADMIN_ID  = os.getenv("TELEGRAM_ADMIN_ID", "")
-APP_URL   = os.getenv("NEXT_PUBLIC_APP_URL", "https://second-brain-ai.vercel.app")
+BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
+ADMIN_ID   = os.getenv("TELEGRAM_ADMIN_ID", "")
+APP_URL    = os.getenv("NEXT_PUBLIC_APP_URL", "https://second-brain-ai-uob8.onrender.com")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBDqKK1Ki3PElFylbqKLXz_gTuhLrA50zk")
 
 if not BOT_TOKEN:
     print("❌ TELEGRAM_BOT_TOKEN topilmadi! .env.local faylini tekshiring.", flush=True)
@@ -53,15 +54,39 @@ def api_call(method, payload=None, timeout=30):
         return None
 
 def send_message(chat_id, text, parse_mode="HTML", reply_markup=None):
-    # Telegram user chats require int chat_id
     try:
         chat_id = int(chat_id)
     except (ValueError, TypeError):
-        pass  # keep as-is for usernames
+        pass
     payload = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
     if reply_markup:
         payload["reply_markup"] = reply_markup
     return api_call("sendMessage", payload)
+
+# ── Gemini AI Query Function ──────────────────────────────────────────────────
+def query_gemini_ai(prompt):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_KEY}"
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": "Siz Second Brain AI botisiz. Telegramda o'zbek tilida erkin, intellektual va do'stona javob bering."}]
+            },
+            {
+                "role": "user",
+                "parts": [{"text": prompt}]
+            }
+        ]
+    }
+    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            text = data['candidates'][0]['content']['parts'][0]['text']
+            return text
+    except Exception as e:
+        print(f"Gemini API Error: {e}", flush=True)
+        return f"🤖 AI bilan ulanishda xatolik: {e}"
 
 # ── Smart PARA Parser ─────────────────────────────────────────────────────────
 PREFIXES = {
@@ -97,12 +122,9 @@ def get_db():
     return conn
 
 def get_admin_user_id():
-    """Get first admin user's ID from DB."""
     try:
         conn = get_db()
-        row = conn.execute(
-            "SELECT id FROM User WHERE isAdmin=1 ORDER BY createdAt ASC LIMIT 1"
-        ).fetchone()
+        row = conn.execute("SELECT id FROM User WHERE isAdmin=1 ORDER BY createdAt ASC LIMIT 1").fetchone()
         conn.close()
         return row["id"] if row else None
     except Exception as e:
@@ -110,7 +132,6 @@ def get_admin_user_id():
         return None
 
 def get_user_id_by_tg(tg_user_id):
-    """Get user ID by telegram user ID (email pattern tg_{id}@telegram.local)."""
     try:
         conn = get_db()
         email = f"tg_{tg_user_id}@telegram.local"
@@ -123,7 +144,6 @@ def get_user_id_by_tg(tg_user_id):
     return get_admin_user_id()
 
 def save_to_db(msg, para_category, tag, clean_text, user_id=None):
-    """Save Telegram message to SQLite as TelegramMessage + Note."""
     try:
         conn   = get_db()
         cursor = conn.cursor()
@@ -139,7 +159,6 @@ def save_to_db(msg, para_category, tag, clean_text, user_id=None):
         date_str   = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
         unique_id  = f"tg_{msg_id}_{int(time.time())}"
 
-        # Save to TelegramMessage table
         cursor.execute("""
             INSERT INTO TelegramMessage
               (id, telegramId, chatName, chatType, fromName, isOutgoing, text, date, mediaType, paraCategory, userId)
@@ -149,7 +168,6 @@ def save_to_db(msg, para_category, tag, clean_text, user_id=None):
             0, clean_text, date_str, "text", para_category, user_id,
         ))
 
-        # Also save as a Note
         note_id = f"note-{unique_id}"
         title   = clean_text[:80] if len(clean_text) > 5 else f"Telegram qayd #{msg_id}"
         cursor.execute("""
@@ -170,126 +188,68 @@ def save_to_db(msg, para_category, tag, clean_text, user_id=None):
 
 # ── Daily Report ──────────────────────────────────────────────────────────────
 def build_daily_report():
-    """Collect today's stats from DB."""
     try:
         conn  = get_db()
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-        # Today's new notes (createdAt starts with today)
-        today_notes = conn.execute(
-            "SELECT COUNT(*) FROM Note WHERE createdAt LIKE ?", (f"{today}%",)
-        ).fetchone()[0]
-
+        today_notes = conn.execute("SELECT COUNT(*) FROM Note WHERE createdAt LIKE ?", (f"{today}%",)).fetchone()[0]
         total_notes = conn.execute("SELECT COUNT(*) FROM Note").fetchone()[0]
-
-        active_projects = conn.execute(
-            "SELECT COUNT(*) FROM Project WHERE status='IN_PROGRESS'"
-        ).fetchone()[0]
-
-        done_projects = conn.execute(
-            "SELECT COUNT(*) FROM Project WHERE status='DONE'"
-        ).fetchone()[0]
-
-        habits_done = conn.execute(
-            "SELECT COUNT(*) FROM HabitLog WHERE date=? AND completed=1", (today,)
-        ).fetchone()[0]
-
+        active_projects = conn.execute("SELECT COUNT(*) FROM Project WHERE status='IN_PROGRESS'").fetchone()[0]
+        done_projects = conn.execute("SELECT COUNT(*) FROM Project WHERE status='DONE'").fetchone()[0]
+        habits_done = conn.execute("SELECT COUNT(*) FROM HabitLog WHERE date=? AND completed=1", (today,)).fetchone()[0]
         total_habits = conn.execute("SELECT COUNT(*) FROM Habit").fetchone()[0]
-
-        income = conn.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM \"Transaction\" WHERE type='INCOME' AND date=?", (today,)
-        ).fetchone()[0]
-
-        expense = conn.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM \"Transaction\" WHERE type='EXPENSE' AND date=?", (today,)
-        ).fetchone()[0]
-
-        tx_count = conn.execute(
-            "SELECT COUNT(*) FROM \"Transaction\" WHERE date=?", (today,)
-        ).fetchone()[0]
-
+        income = conn.execute("SELECT COALESCE(SUM(amount),0) FROM \"Transaction\" WHERE type='INCOME' AND date=?", (today,)).fetchone()[0]
+        expense = conn.execute("SELECT COALESCE(SUM(amount),0) FROM \"Transaction\" WHERE type='EXPENSE' AND date=?", (today,)).fetchone()[0]
         conn.close()
+
         return {
-            "today": today,
-            "today_notes": today_notes,
-            "total_notes": total_notes,
-            "active_projects": active_projects,
-            "done_projects": done_projects,
-            "habits_done": habits_done,
-            "total_habits": total_habits,
-            "income": income,
-            "expense": expense,
-            "balance": income - expense,
-            "tx_count": tx_count,
+            "today": today, "today_notes": today_notes, "total_notes": total_notes,
+            "active_projects": active_projects, "done_projects": done_projects,
+            "habits_done": habits_done, "total_habits": total_habits,
+            "income": income, "expense": expense, "balance": income - expense,
         }
     except Exception as e:
         print(f"build_daily_report error: {e}", flush=True)
-        return None
+        return {}
 
 def format_daily_report(data):
     if not data:
-        return "⚠️ Hisobot olishda xatolik yuz berdi."
-    habit_pct = int((data["habits_done"] / data["total_habits"]) * 100) if data["total_habits"] > 0 else 0
-    filled = "█" * (habit_pct // 10)
-    empty  = "░" * (10 - habit_pct // 10)
-    habit_bar = f"{filled}{empty}"
-
-    finance_txt = ""
-    if data["tx_count"] > 0:
-        bal = data["balance"]
-        bal_sign = "+" if bal >= 0 else ""
-        finance_txt = (
-            f"  Kirim: +<b>{int(data['income']):,} so'm</b>\n"
-            f"  Chiqim: -<b>{int(data['expense']):,} so'm</b>\n"
-            f"  Balans: <b>{bal_sign}{int(bal):,} so'm</b>"
-        )
-    else:
-        finance_txt = "  Bugun tranzaksiyalar yo'q"
-
+        return "⚠️ Hisobot tayyorlashda xatolik yuz berdi."
     return (
-        f"🌙 <b>Kunlik Hisobot — {data['today']}</b>\n\n"
-        f"📝 <b>Eslatmalar</b>\n"
-        f"  Bugun: <b>{data['today_notes']}</b>  |  Jami: {data['total_notes']}\n\n"
-        f"🎯 <b>Loyihalar</b>\n"
-        f"  Faol: <b>{data['active_projects']}</b>  |  Tugallangan: {data['done_projects']}\n\n"
-        f"🏃 <b>Odatlar</b>\n"
-        f"  Bajarildi: <b>{data['habits_done']}/{data['total_habits']}</b> ({habit_pct}%)\n"
-        f"  <code>{habit_bar}</code>\n\n"
-        f"💰 <b>Moliya (bugun)</b>\n"
-        f"{finance_txt}\n\n"
-        f"<i>Second Brain AI tomonidan avtomatik yuborildi 🤖</i>"
+        f"📊 <b>Kunlik Hisobot — {data.get('today')}</b>\n\n"
+        f"📝 Bugungi eslatmalar: <b>{data.get('today_notes', 0)} ta</b> (jami: {data.get('total_notes', 0)})\n"
+        f"🎯 Faol loyihalar: <b>{data.get('active_projects', 0)} ta</b> (bajarilgan: {data.get('done_projects', 0)})\n"
+        f"🏃 Odatlar bajarildi: <b>{data.get('habits_done', 0)}/{data.get('total_habits', 0)}</b>\n"
+        f"💰 Kirim: <b>{data.get('income', 0):,} so'm</b>\n"
+        f"💸 Chiqim: <b>{data.get('expense', 0):,} so'm</b>\n"
+        f"📈 Balans: <b>{data.get('balance', 0):,} so'm</b>"
     )
 
-def send_daily_report(chat_id=None):
-    """Send daily report to admin or specified chat."""
-    target_str = str(chat_id or ADMIN_ID).strip()
+def send_daily_report(chat_id_override=None):
+    target_str = chat_id_override or ADMIN_ID
     if not target_str:
-        print("⚠️ ADMIN_ID topilmadi, hisobot yuborilmadi.", flush=True)
+        print("❌ TELEGRAM_ADMIN_ID sozlanmagan!", flush=True)
         return
-    # Telegram requires int chat_id for user chats
+
     try:
         target = int(target_str)
     except ValueError:
-        target = target_str  # group/channel usernames like @channelname
+        target = target_str
 
     data = build_daily_report()
     msg  = format_daily_report(data)
     reply_markup = {
         "inline_keyboard": [
             [{"text": "📱 Second Brain Mini App", "web_app": {"url": APP_URL}}],
-            [{"text": "🌐 Saytni ochish", "url": APP_URL}],
+            [{"text": "💬 Gemini AI Chat", "web_app": {"url": f"{APP_URL}/chat"}}],
         ]
     }
     result = send_message(target, msg, reply_markup=reply_markup)
     if result and result.get("ok"):
         print(f"✅ Kunlik hisobot yuborildi → {target}", flush=True)
-    else:
-        print(f"❌ Hisobot yuborishda xatolik: {result}", flush=True)
 
-# ── Daily Scheduler Thread ────────────────────────────────────────────────────
 def daily_report_scheduler():
-    """Send daily report at 21:00 Tashkent time (UTC+5 = 16:00 UTC)."""
-    REPORT_HOUR_UTC = 16  # 21:00 Tashkent = 16:00 UTC
+    REPORT_HOUR_UTC = 16
     print(f"⏰ Kunlik hisobot scheduler ishga tushdi (har kuni {REPORT_HOUR_UTC+5}:00 Toshkent vaqtida)", flush=True)
     last_sent_date = None
 
@@ -300,20 +260,17 @@ def daily_report_scheduler():
                 print(f"📤 Kunlik hisobot yuborilmoqda...", flush=True)
                 send_daily_report()
                 last_sent_date = now.strftime("%Y-%m-%d")
-            time.sleep(60)  # Check every minute
+            time.sleep(60)
         except Exception as e:
             print(f"Scheduler xatosi: {e}", flush=True)
             time.sleep(60)
 
-# ── Bot Responses ─────────────────────────────────────────────────────────────
 def send_webapp_buttons(chat_id, text_body):
-    """Send message with Mini App buttons."""
     reply_markup = {
         "inline_keyboard": [
             [{"text": "🧠 Second Brain Mini App", "web_app": {"url": APP_URL}}],
-            [{"text": "🪞 Mind Mirror Chatbot", "web_app": {"url": f"{APP_URL}/mind-analyzer"}}],
-            [{"text": "⚙️ Sozlamalar", "web_app": {"url": f"{APP_URL}/settings"}}],
-            [{"text": "🌐 Saytni brauzerda ochish", "url": APP_URL}],
+            [{"text": "💬 Gemini AI Chatbot", "web_app": {"url": f"{APP_URL}/chat"}}],
+            [{"text": "🌐 Saytni ochish", "url": APP_URL}],
         ]
     }
     send_message(chat_id, text_body, reply_markup=reply_markup)
@@ -322,132 +279,56 @@ def handle_start(chat_id, first_name):
     msg = (
         f"Salom <b>{first_name}</b>! 👋\n\n"
         f"🧠 <b>Second Brain AI</b> — O'zbek tili Neural Knowledge System\n\n"
+        f"🤖 <b>AI Bilan Chatlashish:</b>\n"
+        f"<code>/ai [savolingiz]</code> — Google Gemini AI dan so'rash\n"
+        f"Masalan: <code>/ai Python kodi misoli</code>\n\n"
         f"<b>Buyruqlar:</b>\n"
         f"/start — Xush kelibsiz\n"
         f"/help — Qo'llanma\n"
         f"/report — Bugungi hisobot 📊\n"
-        f"/stats — Umumiy statistika 📈\n"
-        f"/habits — Bugungi odatlar 🏃\n\n"
-        f"<b>Smart saqlash prefixlari:</b>\n"
-        f"📌 <code>Loyiha: [nom]</code> → PROJECT\n"
-        f"💡 <code>G'oya: [matn]</code> → RESOURCE\n"
-        f"📝 <code>Oddiy matn</code> → Eslatma\n"
-        f"💰 <code>Kirim: [summa]</code> → Moliya\n\n"
-        f"Har qanday xabar avtomatik <b>Second Brain</b>ga saqlanadi!"
+        f"/stats — Statistika 📈\n"
+        f"/habits — Odatlar 🏃\n\n"
+        f"Xabar yuborsangiz avtomatik Second Brain bazasiga saqlanadi!"
     )
     send_webapp_buttons(chat_id, msg)
 
 def handle_help(chat_id):
     msg = (
         f"ℹ️ <b>Yordam &amp; Qo'llanma</b>\n\n"
-        f"<b>Barcha buyruqlar:</b>\n"
-        f"/start — Xush kelibsiz va ilovani ochish\n"
-        f"/help — Shu yordam\n"
-        f"/report — Bugungi kunlik hisobot\n"
+        f"🤖 <b>AI Chatbot:</b>\n"
+        f"<code>/ai [savol]</code> — Google Gemini AI bilan gaplashish\n\n"
+        f"<b>Buyruqlar:</b>\n"
+        f"/start — Mini app ilovasini ochish\n"
+        f"/report — Kunlik hisobot\n"
         f"/stats — Umumiy statistika\n"
-        f"/habits — Bugungi odatlar holati\n\n"
-        f"<b>Smart saqlash prefixlari:</b>\n"
+        f"/habits — Odatlar holati\n\n"
+        f"<b>Smart saqlash:</b>\n"
         f"📌 <code>Loyiha: [nom]</code> → PROJECT\n"
-        f"🎯 <code>Vazifa: [nom]</code> → Vazifa\n"
         f"💡 <code>G'oya: [matn]</code> → RESOURCE\n"
-        f"📚 <code>Kitob: [nom]</code> → Kitob\n"
-        f"🔗 <code>URL: [link]</code> → Havola\n"
-        f"📝 <code>Eslatma: [matn]</code> → Note\n"
-        f"🌍 <code>Soha: [nom]</code> → AREA\n"
-        f"💰 <code>Kirim: [summa]</code> → Moliya\n"
-        f"💸 <code>Chiqim: [summa]</code> → Chiqim\n\n"
-        f"<b>Prefix ishlatmasangiz</b> → Eslatma sifatida saqlanadi ✅\n\n"
-        f"Barcha xabarlar web ilovada ko'rinadi!"
+        f"📝 <code>Oddiy matn</code> → Eslatma"
     )
     send_message(chat_id, msg)
 
-def handle_report(chat_id):
-    data = build_daily_report()
-    msg  = format_daily_report(data)
+def handle_ai(chat_id, prompt):
+    if not prompt:
+        send_message(chat_id, "🤖 <code>/ai [savolingiz]</code> formatida yozing.\nMasalan: <code>/ai Loyihalarim haqida maslahat ber</code>")
+        return
+    send_message(chat_id, "⏳ <i>Gemini AI o'ylamoqda...</i>")
+    answer = query_gemini_ai(prompt)
     reply_markup = {
-        "inline_keyboard": [[{"text": "📱 Second Brain", "web_app": {"url": APP_URL}}]]
+        "inline_keyboard": [[{"text": "💬 Web Chatda Ochish", "web_app": {"url": f"{APP_URL}/chat"}}]]
     }
-    send_message(chat_id, msg, reply_markup=reply_markup)
-
-def handle_stats(chat_id):
-    try:
-        conn = get_db()
-        total_notes   = conn.execute("SELECT COUNT(*) FROM Note").fetchone()[0]
-        total_proj    = conn.execute("SELECT COUNT(*) FROM Project").fetchone()[0]
-        active_proj   = conn.execute("SELECT COUNT(*) FROM Project WHERE status='IN_PROGRESS'").fetchone()[0]
-        total_habits  = conn.execute("SELECT COUNT(*) FROM Habit").fetchone()[0]
-        total_tx      = conn.execute("SELECT COUNT(*) FROM \"Transaction\"").fetchone()[0]
-        total_tg_msgs = conn.execute("SELECT COUNT(*) FROM TelegramMessage").fetchone()[0]
-        conn.close()
-
-        msg = (
-            f"📈 <b>Umumiy Statistika</b>\n\n"
-            f"📝 Jami eslatmalar: <b>{total_notes}</b>\n"
-            f"🎯 Jami loyihalar: <b>{total_proj}</b> (faol: {active_proj})\n"
-            f"🏃 Jami odatlar: <b>{total_habits}</b>\n"
-            f"💰 Jami tranzaksiyalar: <b>{total_tx}</b>\n"
-            f"📨 Telegram xabarlari: <b>{total_tg_msgs}</b>"
-        )
-        send_message(chat_id, msg)
-    except Exception as e:
-        send_message(chat_id, f"⚠️ Statistika olishda xatolik: {e}")
-
-def handle_habits(chat_id):
-    try:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        conn  = get_db()
-        habits = conn.execute("SELECT id, title, icon FROM Habit ORDER BY createdAt").fetchall()
-        if not habits:
-            send_message(chat_id, "🏃 Hech qanday odat topilmadi. Saytdan odat qo'shing!")
-            conn.close()
-            return
-
-        done_ids = {
-            r[0] for r in conn.execute(
-                "SELECT habitId FROM HabitLog WHERE date=? AND completed=1", (today,)
-            ).fetchall()
-        }
-        conn.close()
-
-        lines = [f"🏃 <b>Bugungi Odatlar ({today})</b>\n"]
-        for h in habits:
-            status = "✅" if h["id"] in done_ids else "⬜"
-            lines.append(f"{status} {h['title']}")
-
-        completed = len([h for h in habits if h["id"] in done_ids])
-        lines.append(f"\n<b>{completed}/{len(habits)}</b> bajarildi")
-        send_message(chat_id, "\n".join(lines))
-    except Exception as e:
-        send_message(chat_id, f"⚠️ Odatlar olishda xatolik: {e}")
-
-def send_confirmation(chat_id, para_category, tag, clean_text):
-    emoji   = CATEGORY_EMOJI.get(para_category, "✅")
-    preview = clean_text[:60] + ("..." if len(clean_text) > 60 else "")
-    msg = (
-        f"✅ <b>Saqlandi!</b>\n\n"
-        f"{emoji} <b>Kategoriya:</b> {para_category} [{tag}]\n"
-        f"📝 <b>Matn:</b> {preview}\n\n"
-        f"<i>Neyron grafikda ko'rish uchun ilovani oching:</i>"
-    )
-    reply_markup = {
-        "inline_keyboard": [[{"text": "🧠 Second Brain", "web_app": {"url": APP_URL}}]]
-    }
-    send_message(chat_id, msg, reply_markup=reply_markup)
+    send_message(chat_id, f"🤖 <b>Gemini AI Javobi:</b>\n\n{answer}", parse_mode="Markdown", reply_markup=reply_markup)
 
 # ── Main Bot Loop ─────────────────────────────────────────────────────────────
 def run_bot():
     print(f"🚀 Second Brain Telegram Bot ishga tushdi", flush=True)
     print(f"🌐 Web App URL: {APP_URL}", flush=True)
-    print(f"💾 DB: {DB_PATH}", flush=True)
-    print(f"👤 Admin ID: {ADMIN_ID}", flush=True)
 
-    # Start daily report scheduler in background thread
     scheduler_thread = threading.Thread(target=daily_report_scheduler, daemon=True)
     scheduler_thread.start()
 
-    # Cache admin user ID
     admin_user_id = get_admin_user_id()
-    print(f"🔑 Admin user DB ID: {admin_user_id}", flush=True)
 
     offset = 0
     while True:
@@ -469,12 +350,9 @@ def run_bot():
                 first_name = from_user.get("first_name", "foydalanuvchi")
                 tg_user_id = from_user.get("id")
 
-                print(f"📩 {first_name} ({chat_id}): {text[:60]}", flush=True)
-
                 if not text:
                     continue
 
-                # ── Commands ──────────────────────────────────────────────────
                 if text.startswith("/start"):
                     handle_start(chat_id, first_name)
                     continue
@@ -483,31 +361,38 @@ def run_bot():
                     handle_help(chat_id)
                     continue
 
+                if text.startswith("/ai") or text.startswith("/gemini"):
+                    parts = text.split(" ", 1)
+                    prompt = parts[1] if len(parts) > 1 else ""
+                    handle_ai(chat_id, prompt)
+                    continue
+
                 if text.startswith("/report"):
-                    handle_report(chat_id)
+                    data = build_daily_report()
+                    msg_text = format_daily_report(data)
+                    send_message(chat_id, msg_text)
                     continue
 
                 if text.startswith("/stats"):
-                    handle_stats(chat_id)
+                    conn = get_db()
+                    total_notes = conn.execute("SELECT COUNT(*) FROM Note").fetchone()[0]
+                    total_proj  = conn.execute("SELECT COUNT(*) FROM Project").fetchone()[0]
+                    conn.close()
+                    send_message(chat_id, f"📈 <b>Statistika:</b>\n📝 Qaydlar: {total_notes}\n🎯 Loyihalar: {total_proj}")
                     continue
 
-                if text.startswith("/habits"):
-                    handle_habits(chat_id)
-                    continue
-
-                # ── Smart parse + save ────────────────────────────────────────
+                # Default: Smart save + AI conversation answer
                 para_cat, tag, clean_text = parse_message(text)
-
-                # Resolve user ID
                 user_id = get_user_id_by_tg(tg_user_id) if tg_user_id else admin_user_id
-
                 saved = save_to_db(msg, para_cat, tag, clean_text, user_id)
 
-                if saved:
-                    send_confirmation(chat_id, para_cat, tag, clean_text)
-                    print(f"  ✅ Saqlandi [{para_cat}/{tag}]: {clean_text[:40]}", flush=True)
+                # Send AI answer back for non-prefix text
+                if text.endswith("?") or len(text.split()) > 3:
+                    ai_reply = query_gemini_ai(text)
+                    send_message(chat_id, f"🤖 <b>Gemini AI:</b>\n\n{ai_reply}")
                 else:
-                    send_message(chat_id, "⚠️ Xabar saqlashda xatolik yuz berdi. Qayta urining.")
+                    emoji = CATEGORY_EMOJI.get(para_cat, "✅")
+                    send_message(chat_id, f"✅ <b>Saqlandi!</b> {emoji} [{para_cat}] {clean_text[:60]}")
 
         except KeyboardInterrupt:
             print("\n🛑 Bot to'xtatildi.", flush=True)
@@ -516,12 +401,5 @@ def run_bot():
             print(f"❌ Polling xatosi: {e}", flush=True)
             time.sleep(3)
 
-# ── Entry Point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    if "--send-report" in sys.argv:
-        # One-shot mode: just send daily report and exit
-        print("📤 Bir martalik hisobot yuborilmoqda...", flush=True)
-        send_daily_report()
-        print("✅ Tayyor.", flush=True)
-    else:
-        run_bot()
+    run_bot()
