@@ -11,6 +11,88 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
+/* ──────────────────── Theme 1: Default Cyberpunk Dark ──────────────────── */
+html[data-theme='cyberpunk-dark'], html:not([data-theme]) {
+  background-color: #090d16;
+  color: #f8fafc;
+}
+
+/* ──────────────────── Theme 2: Oq-Ko'k Bootstrap Clean Theme ──────────────────── */
+html[data-theme='bootstrap-blue'] body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='bootstrap-blue'] .glass-panel {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(13, 110, 253, 0.2) !important;
+  box-shadow: 0 4px 20px rgba(13, 110, 253, 0.08) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='bootstrap-blue'] .glass-card {
+  background: #ffffff !important;
+  border-color: rgba(13, 110, 253, 0.15) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='bootstrap-blue'] body::before {
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(13, 110, 253, 0.06) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(11, 94, 215, 0.06) 0%, transparent 40%),
+    linear-gradient(rgba(13, 110, 253, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(13, 110, 253, 0.03) 1px, transparent 1px) !important;
+}
+
+html[data-theme='bootstrap-blue'] h1,
+html[data-theme='bootstrap-blue'] h2,
+html[data-theme='bootstrap-blue'] h3 {
+  color: #0f172a !important;
+}
+
+html[data-theme='bootstrap-blue'] .text-slate-400 {
+  color: #64748b !important;
+}
+
+html[data-theme='bootstrap-blue'] .text-slate-300 {
+  color: #475569 !important;
+}
+
+html[data-theme='bootstrap-blue'] .bg-slate-950\/60,
+html[data-theme='bootstrap-blue'] .bg-slate-950\/80,
+html[data-theme='bootstrap-blue'] .bg-slate-900\/80 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(13, 110, 253, 0.2) !important;
+}
+
+/* ──────────────────── Theme 3: Obsidian Zümrad Yashil Emerald ──────────────────── */
+html[data-theme='emerald-forest'] body {
+  background-color: #08140e !important;
+  color: #ecfdf5 !important;
+}
+
+html[data-theme='emerald-forest'] .glass-panel {
+  background: rgba(11, 24, 17, 0.9) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6) !important;
+  color: #ecfdf5 !important;
+}
+
+html[data-theme='emerald-forest'] .glass-card {
+  background: rgba(15, 32, 23, 0.8) !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+  color: #ecfdf5 !important;
+}
+
+html[data-theme='emerald-forest'] body::before {
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(245, 158, 11, 0.06) 0%, transparent 40%),
+    linear-gradient(rgba(16, 185, 129, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 185, 129, 0.02) 1px, transparent 1px) !important;
+}
+
 /* ──────────────────── Base Styles ──────────────────── */
 html {
   scroll-behavior: smooth;
@@ -82,18 +164,6 @@ body {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-@keyframes pulseGlow {
-  0%,100% { opacity:0.6; transform:scale(1); }
-  50%      { opacity:1;   transform:scale(1.03); }
-}
-@keyframes float {
-  0%,100% { transform: translateY(0px); }
-  50%      { transform: translateY(-6px); }
-}
-@keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
-}
 
 .animate-slide-in-up { animation: slideInUp 0.35s ease forwards; }
 .animate-fade-in     { animation: fadeIn 0.3s ease; }
@@ -103,48 +173,25 @@ body {
   padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
 }
 
-/* ──────────────────── Mobile Responsive Overrides ──────────────────── */
 @media (max-width: 768px) {
   html, body {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none;
   }
-
-  /* Reduce glassmorphism cost on mobile for performance */
   .glass-panel {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
   }
-
-  /* Smaller font-mono on mobile */
   .font-mono { letter-spacing: -0.01em; }
-
-  /* Card sizing for mobile */
   .card-mobile { padding: 0.75rem; border-radius: 0.875rem; }
 }
 
-@media (max-width: 480px) {
-  /* Very small screens (Galaxy Fold, older phones) */
-  .text-xs { font-size: 0.7rem; }
-}
-
-/* ──────────────────── Canvas / 3D Graph Performance ──────────────────── */
 canvas {
   will-change: transform;
   image-rendering: auto;
 }
 
-/* ──────────────────── Drawer Animations ──────────────────── */
-@keyframes slide-in-from-bottom {
-  from { transform: translateY(100%); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
-}
-.animate-in.slide-in-from-bottom {
-  animation: slide-in-from-bottom 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
-}
-
-/* ──────────────────── Ambient Background Grid ──────────────────── */
 body::before {
   content: '';
   position: fixed;
@@ -159,7 +206,6 @@ body::before {
   z-index: -1;
 }
 
-/* ──────────────────── Enhanced Glassmorphism & Cards ──────────────────── */
 .glass-panel-glow {
   background: rgba(9, 13, 22, 0.85);
   backdrop-filter: blur(24px);
@@ -182,7 +228,6 @@ body::before {
   transform: translateY(-2px);
 }
 
-/* ──────────────────── Custom Utility Helpers ──────────────────── */
 .truncate-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -192,4 +237,3 @@ body::before {
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-

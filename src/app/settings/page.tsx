@@ -3,13 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   Sliders, ShieldCheck, Download, LogOut, Moon, Sun, Monitor,
-  Zap, Database, RefreshCw, Smartphone, CheckCircle2, User, Key
+  Zap, Database, RefreshCw, Smartphone, CheckCircle2, User, Key, Palette
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { ThemeSelector } from '@/components/ThemeSelector';
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [theme, setTheme] = useState('dark');
   const [fpsLimit, setFpsLimit] = useState('30');
   const [user, setUser] = useState<any>(null);
   const [exported, setExported] = useState(false);
@@ -60,13 +60,22 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-lg font-extrabold text-white font-mono">Sozlamalar va Xavfsizlik</h1>
             <p className="text-[11px] text-slate-400 font-mono">
-              Interfeys, 3D grafik tezligi, xavfsizlik va zaxira nusxalari
+              3 ta Dizayn Mavzusi, 3D grafik tezligi, xavfsizlik va zaxira nusxalari
             </p>
           </div>
         </div>
       </div>
 
-      {/* ── Section 1: User Account & Workspace Isolation ── */}
+      {/* ── Section 1: 3 Distinct UI Themes Selector ── */}
+      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 space-y-4">
+        <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+          <Palette className="w-5 h-5 text-cyan-400" />
+          <h2 className="text-sm font-bold text-white font-mono">Interfeys va Dizayn Mavzulari (3 ta)</h2>
+        </div>
+        <ThemeSelector />
+      </div>
+
+      {/* ── Section 2: User Account & Workspace Isolation ── */}
       <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 space-y-4">
         <div className="flex items-center gap-2 border-b border-white/10 pb-3">
           <User className="w-5 h-5 text-cyan-400" />
@@ -98,7 +107,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* ── Section 2: 3D Canvas & Performance Options ── */}
+      {/* ── Section 3: 3D Canvas & Performance Options ── */}
       <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 space-y-4">
         <div className="flex items-center gap-2 border-b border-white/10 pb-3">
           <Zap className="w-5 h-5 text-amber-400" />
@@ -132,7 +141,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* ── Section 3: Data Backup & Export ── */}
+      {/* ── Section 4: Data Backup & Export ── */}
       <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 space-y-4">
         <div className="flex items-center gap-2 border-b border-white/10 pb-3">
           <Database className="w-5 h-5 text-purple-400" />

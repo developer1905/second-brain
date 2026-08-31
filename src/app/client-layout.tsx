@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { QuickCaptureModal } from '@/components/QuickCaptureModal';
 import { TelegramWebAppInit } from '@/components/TelegramWebAppInit';
 import { MobileNav } from '@/components/MobileNav';
+import { ThemeProvider } from '@/components/ThemeProvider';
 
 export default function ClientLayout({
   children,
@@ -46,7 +47,7 @@ export default function ClientLayout({
   };
 
   return (
-    <>
+    <ThemeProvider>
       <TelegramWebAppInit />
 
       {/* Top Header — fixed height 64px */}
@@ -58,39 +59,25 @@ export default function ClientLayout({
         onToggleSidebar={toggleSidebar}
       />
 
-      {/* Main App Body */}
-      <div className="flex flex-1 overflow-hidden" style={{ height: 'calc(100dvh - 64px)' }}>
-        {/* Desktop Sidebar — hidden on mobile */}
-        <Sidebar
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={toggleSidebar}
-        />
+      {/* Main Body Layout */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Left Sidebar */}
+        <Sidebar isCollapsed={isSidebarCollapsed} />
 
-        {/* Page Content — scrollable */}
-        <main
-          id="main-content"
-          className="flex-1 overflow-y-auto overflow-x-hidden
-                     p-2 sm:p-3 md:p-5 lg:p-6
-                     pb-[72px] md:pb-5
-                     transition-all duration-300"
-        >
+        {/* Center Content Area */}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 bg-transparent relative z-0 text-slate-100">
           {children}
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation Bar — only visible on mobile */}
-      {mounted && (
-        <MobileNav onOpenQuickCapture={() => setIsQuickCaptureOpen(true)} />
-      )}
+      {/* Mobile Bottom Navigation */}
+      <MobileNav onOpenQuickCapture={() => setIsQuickCaptureOpen(true)} />
 
-      {/* Quick Capture Modal — router.refresh() instead of window.location.reload() */}
+      {/* Global Quick Capture Modal */}
       <QuickCaptureModal
         isOpen={isQuickCaptureOpen}
         onClose={() => setIsQuickCaptureOpen(false)}
-        onSuccess={() => {
-          router.refresh();
-        }}
       />
-    </>
+    </ThemeProvider>
   );
 }
