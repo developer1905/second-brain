@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getOpenRouterApiKey, getGeminiApiKey } from '@/lib/ai-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,15 +42,15 @@ export async function POST(req: NextRequest) {
 
     const userQuery = content.trim();
 
-    // Save user message to DB
+    // 1. Save user message to database
     await prisma.chatMessage.create({
       data: { sessionId, role: 'user', content: userQuery },
     });
 
     let aiReply = '';
 
-    // 1. OpenRouter API (sk-or-v1-cfdd...) with openrouter/free model
-    const openrouterKey = userApiKey?.trim() || process.env.OPENROUTER_API_KEY || '';
+    // 2. OpenRouter API Call with openrouter/free model
+    const openrouterKey = userApiKey?.trim() || getOpenRouterApiKey();
 
     if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
       try {
@@ -103,9 +104,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Google Gemini Fallback
+    // 3. Fallback: Google Gemini API
     if (!aiReply) {
-      const geminiKey = process.env.GEMINI_API_KEY || '';
+      const geminiKey = getGeminiApiKey();
       if (geminiKey) {
         try {
           const contents = [
@@ -133,7 +134,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!aiReply) {
-      aiReply = `Salom! Men OpenRouter AI suhbatdoshingizman. Qanday yordam bera olaman? 😊`;
+      aiReply = `Salom! Sizning so'rovingiz bo'yicha tayyorman: "${userQuery}". Qanday yordam bera olaman? 😊`;
     }
 
     // Save assistant reply

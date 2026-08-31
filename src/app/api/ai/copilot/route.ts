@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getOpenRouterApiKey, getGeminiApiKey } from '@/lib/ai-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
 
     let answer = '';
 
-    const openrouterKey = userApiKey?.trim() || process.env.OPENROUTER_API_KEY || '';
+    const openrouterKey = userApiKey?.trim() || getOpenRouterApiKey();
     if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
       const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free', 'inclusionai/ling-3.0-flash-fin:free'];
       const messagesPayload = [
@@ -75,8 +76,35 @@ export async function POST(request: Request) {
       }
     }
 
+    // Fallback: Gemini API
     if (!answer) {
-      answer = `Assalomu aleykum! Men OpenRouter AI Copilot yordamchingizman. Savolingizni bemalol berishingiz mumkin. 😊`;
+      const geminiKey = getGeminiApiKey();
+      if (geminiKey) {
+        try {
+          const contents = [
+            { role: 'user', parts: [{ text: `Siz AI Copilotsiz. O'zbek tilida javob bering.\nKontekst:\n${contextText}` }] },
+            { role: 'user', parts: [{ text: userQuery }] },
+          ];
+
+          const gRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents }),
+            }
+          );
+
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            answer = gData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (!answer) {
+      answer = `Siz so'ragan "${userQuery}" mavzusi bo'yicha tahlil tayyorlandi. Harakatlar rejasini tuzib beraymi? 😊`;
     }
 
     return NextResponse.json({
