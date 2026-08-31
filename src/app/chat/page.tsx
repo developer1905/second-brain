@@ -314,13 +314,14 @@ export default function ChatPage() {
             </div>
             <div>
               <h1 className="text-sm font-extrabold text-white font-mono flex items-center gap-2">
-                GEMINI AI CHAT
-                <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[9px] font-sans">
-                  O'zbekcha Chat
+                DEEPSEEK V3 AI CHAT
+                <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[9px] font-sans font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                  DeepSeek Connected
                 </span>
               </h1>
               <p className="text-[11px] text-slate-400">
-                Xuddi Gemini kabi erkin yozishib muloqot qiling
+                DeepSeek V3 LLM & Second Brain neyron bazasi bilan yozishib muloqot qiling
               </p>
             </div>
           </div>

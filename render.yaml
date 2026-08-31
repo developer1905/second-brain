@@ -13,6 +13,8 @@ services:
         value: file:./prisma/dev.db
       - key: ADMIN_PASSWORD
         value: admin2025
+      - key: DEEPSEEK_API_KEY
+        value: sk-45c4187a0fa74b37b3a258d00d1d8dd1
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_ADMIN_ID
