@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const APP_URL   = process.env.NEXT_PUBLIC_APP_URL || 'https://second-brain-ai.vercel.app';
 const ADMIN_TG  = process.env.TELEGRAM_ADMIN_ID   || '6542040260';
