@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
     const openrouterKey = userApiKey?.trim() || process.env.OPENROUTER_API_KEY || '';
     if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
-      const openrouterModels = ['openrouter/auto', 'deepseek/deepseek-r1:free', 'meta-llama/llama-3.3-70b-instruct:free'];
+      const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free', 'inclusionai/ling-3.0-flash-fin:free'];
       const messagesPayload = [
         {
           role: 'system',
@@ -51,12 +51,13 @@ export async function POST(request: Request) {
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${openrouterKey}`,
+              'HTTP-Referer': 'https://second-brain-ai-uob8.onrender.com',
+              'X-Title': 'Second Brain AI',
             },
             body: JSON.stringify({
               model,
               messages: messagesPayload,
               temperature: 0.7,
-              max_tokens: 1500,
             }),
           });
 

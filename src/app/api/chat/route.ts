@@ -41,14 +41,14 @@ export async function POST(req: NextRequest) {
 
     const userQuery = content.trim();
 
-    // 1. Save user message to database
+    // Save user message to DB
     await prisma.chatMessage.create({
       data: { sessionId, role: 'user', content: userQuery },
     });
 
     let aiReply = '';
 
-    // 2. OpenRouter API Call (DeepSeek R1 / ChatGPT 4o / Llama 3)
+    // 1. OpenRouter API (sk-or-v1-cfdd...) with openrouter/free model
     const openrouterKey = userApiKey?.trim() || process.env.OPENROUTER_API_KEY || '';
 
     if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         const messagesPayload = [
           {
             role: 'system',
-            content: `Siz OpenRouter va Second Brain AI yordamchisiz. O'zbek tilida erkin, samimiy, intellektual va do'stona muloqot qiling. Hech qanday shablon yoki statistika qo'shmang.`,
+            content: `Siz OpenRouter va Second Brain AI yordamchisiz. O'zbek tilida erkin, samimiy va intellektual muloqot qiling. Hech qanday shablon yoki statistika qo'shmang.`,
           },
           ...history.slice(-8).map((h) => ({
             role: h.role === 'user' ? 'user' : 'assistant',
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
           { role: 'user', content: userQuery },
         ];
 
-        const openrouterModels = ['openrouter/auto', 'deepseek/deepseek-r1:free', 'meta-llama/llama-3.3-70b-instruct:free'];
+        const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free', 'inclusionai/ling-3.0-flash-fin:free'];
 
         for (const model of openrouterModels) {
           try {
@@ -74,12 +74,13 @@ export async function POST(req: NextRequest) {
               headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${openrouterKey}`,
+                'HTTP-Referer': 'https://second-brain-ai-uob8.onrender.com',
+                'X-Title': 'Second Brain AI',
               },
               body: JSON.stringify({
                 model,
                 messages: messagesPayload,
                 temperature: 0.7,
-                max_tokens: 1500,
               }),
             });
 
@@ -90,6 +91,8 @@ export async function POST(req: NextRequest) {
                 aiReply = text;
                 break;
               }
+            } else {
+              console.warn(`OpenRouter model ${model} status:`, orRes.status, await orRes.text());
             }
           } catch (e) {
             console.warn(`OpenRouter call failed for ${model}:`, e);
@@ -100,13 +103,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Fallback: Google Gemini API
+    // 2. Google Gemini Fallback
     if (!aiReply) {
       const geminiKey = process.env.GEMINI_API_KEY || '';
       if (geminiKey) {
         try {
           const contents = [
-            { role: 'user', parts: [{ text: "Siz AI yordamchisiz. O'zbek tilida erkin javob bering." }] },
+            { role: 'user', parts: [{ text: "Siz Google Gemini AI yordamchisiz. O'zbek tilida erkin va intellektual javob bering." }] },
             { role: 'user', parts: [{ text: userQuery }] },
           ];
 
