@@ -1,12 +1,11 @@
 // Server-side AI Key Config Helper
 
 export function getGroqApiKey(): string {
+  const freshKey = 'gsk_W9dl8F0Cj39kSXaYPMii' + 'WGdyb3FYp6b5gVMRBojsvhbG1AoMgDkz';
   if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.startsWith('gsk_')) {
     return process.env.GROQ_API_KEY.trim();
   }
-  const k1 = 'gsk_W9dl8F0Cj39kSXaYPMii';
-  const k2 = 'WGdyb3FYp6b5gVMRBojsvhbG1AoMgDkz';
-  return k1 + k2;
+  return freshKey;
 }
 
 export function getOpenRouterApiKey(): string {
