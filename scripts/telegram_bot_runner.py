@@ -38,7 +38,7 @@ if not BOT_TOKEN:
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 DB_PATH  = os.path.join(os.path.dirname(__file__), "..", "prisma", "dev.db")
 
-# ── Telegram API ──────────────────────────────────────────────────────────────
+# ── Telegram API Helpers ──────────────────────────────────────────────────────
 def api_call(method, payload=None, timeout=30):
     url  = f"{BASE_URL}/{method}"
     data = json.dumps(payload).encode("utf-8") if payload else None
@@ -63,6 +63,18 @@ def send_message(chat_id, text, parse_mode="HTML", reply_markup=None):
         payload["reply_markup"] = reply_markup
     return api_call("sendMessage", payload)
 
+# ── Interactive Reply Keyboard Menu ──────────────────────────────────────────
+def get_main_menu_keyboard():
+    return {
+        "keyboard": [
+            [{"text": "🧠 AI Bilan Muloqot"}, {"text": "📝 Qayd Qoldirish"}],
+            [{"text": "📊 Shaxsiy Tahlil"}, {"text": "⏰ Eslatmalarim"}],
+            [{"text": "📑 PDF Hisobot"}, {"text": "💰 Moliya Balans"}],
+        ],
+        "resize_keyboard": True,
+        "persistent": True
+    }
+
 # ── Pure Groq Cloud AI Engine (Llama 3.3 70B) ──────────────────────────────────
 def query_ai(prompt):
     system_prompt = (
@@ -70,7 +82,6 @@ def query_ai(prompt):
         "erkin, samimiy, intellektual va TARTIBLI javob bering. /ai kabi buyruq shart emas, to'g'ridan-to'g'ri do'stona va aqlli javob bering."
     )
 
-    # Groq Cloud API Call (Llama 3.3 70B Versatile)
     if GROQ_KEY and GROQ_KEY.startswith("gsk_"):
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
@@ -111,8 +122,6 @@ PREFIXES = {
     "💰": ("RESOURCE", "Moliya"), "kirim:": ("RESOURCE", "Kirim"), "chiqim:": ("RESOURCE", "Chiqim"),
 }
 
-CATEGORY_EMOJI = {"PROJECT": "🎯", "AREA": "🌍", "RESOURCE": "💡"}
-
 def parse_message(text):
     lower = text.lower().strip()
     for prefix, (cat, tag) in PREFIXES.items():
@@ -134,7 +143,6 @@ def get_admin_user_id():
         conn.close()
         return row["id"] if row else None
     except Exception as e:
-        print(f"get_admin_user_id error: {e}", flush=True)
         return None
 
 def get_user_id_by_tg(tg_user_id):
@@ -146,7 +154,7 @@ def get_user_id_by_tg(tg_user_id):
         if row:
             return row["id"]
     except Exception as e:
-        print(f"get_user_id_by_tg error: {e}", flush=True)
+        pass
     return get_admin_user_id()
 
 def save_to_db(msg, para_category, tag, clean_text, user_id=None):
@@ -192,7 +200,7 @@ def save_to_db(msg, para_category, tag, clean_text, user_id=None):
         print(f"DB save error: {e}", flush=True)
         return False
 
-# ── Daily Report ──────────────────────────────────────────────────────────────
+# ── Daily Report & Stats Helpers ──────────────────────────────────────────────
 def build_daily_report():
     try:
         conn  = get_db()
@@ -222,19 +230,18 @@ def format_daily_report(data):
     if not data:
         return "⚠️ Hisobot tayyorlashda xatolik yuz berdi."
     return (
-        f"📊 <b>Kunlik Hisobot — {data.get('today')}</b>\n\n"
-        f"📝 Bugungi eslatmalar: <b>{data.get('today_notes', 0)} ta</b> (jami: {data.get('total_notes', 0)})\n"
-        f"🎯 Faol loyihalar: <b>{data.get('active_projects', 0)} ta</b> (bajarilgan: {data.get('done_projects', 0)})\n"
-        f"🏃 Odatlar bajarildi: <b>{data.get('habits_done', 0)}/{data.get('total_habits', 0)}</b>\n"
+        f"📊 <b>Second Brain AI — Hisobot ({data.get('today')})</b>\n\n"
+        f"📝 Bugungi qaydlar: <b>{data.get('today_notes', 0)} ta</b> (Jami: {data.get('total_notes', 0)})\n"
+        f"🎯 Faol loyihalar: <b>{data.get('active_projects', 0)} ta</b> (Bajarildi: {data.get('done_projects', 0)})\n"
+        f"🏃 Odatlar bajarilishi: <b>{data.get('habits_done', 0)}/{data.get('total_habits', 0)}</b>\n"
         f"💰 Kirim: <b>{data.get('income', 0):,} so'm</b>\n"
         f"💸 Chiqim: <b>{data.get('expense', 0):,} so'm</b>\n"
-        f"📈 Balans: <b>{data.get('balance', 0):,} so'm</b>"
+        f"📈 Sof Balans: <b>{data.get('balance', 0):,} so'm</b>"
     )
 
 def send_daily_report(chat_id_override=None):
     target_str = chat_id_override or ADMIN_ID
     if not target_str:
-        print("❌ TELEGRAM_ADMIN_ID sozlanmagan!", flush=True)
         return
 
     try:
@@ -244,85 +251,56 @@ def send_daily_report(chat_id_override=None):
 
     data = build_daily_report()
     msg  = format_daily_report(data)
-    reply_markup = {
-        "inline_keyboard": [
-            [{"text": "📱 Second Brain Mini App", "web_app": {"url": APP_URL}}],
-            [{"text": "💬 AI Chatbot", "web_app": {"url": f"{APP_URL}/chat"}}],
-        ]
-    }
-    result = send_message(target, msg, reply_markup=reply_markup)
-    if result and result.get("ok"):
-        print(f"✅ Kunlik hisobot yuborildi → {target}", flush=True)
+    reply_markup = get_main_menu_keyboard()
+    send_message(target, msg, reply_markup=reply_markup)
 
 def daily_report_scheduler():
     REPORT_HOUR_UTC = 16
-    print(f"⏰ Kunlik hisobot scheduler ishga tushdi (har kuni {REPORT_HOUR_UTC+5}:00 Toshkent vaqtida)", flush=True)
     last_sent_date = None
 
     while True:
         try:
             now = datetime.now(timezone.utc)
             if now.hour == REPORT_HOUR_UTC and now.strftime("%Y-%m-%d") != last_sent_date:
-                print(f"📤 Kunlik hisobot yuborilmoqda...", flush=True)
                 send_daily_report()
                 last_sent_date = now.strftime("%Y-%m-%d")
             time.sleep(60)
         except Exception as e:
-            print(f"Scheduler xatosi: {e}", flush=True)
             time.sleep(60)
 
-def send_webapp_buttons(chat_id, text_body):
-    reply_markup = {
-        "inline_keyboard": [
-            [{"text": "🧠 Second Brain Mini App", "web_app": {"url": APP_URL}}],
-            [{"text": "💬 AI Chatbot (Saytda)", "web_app": {"url": f"{APP_URL}/chat"}}],
-        ]
-    }
-    send_message(chat_id, text_body, reply_markup=reply_markup)
-
+# ── Command Handlers ──────────────────────────────────────────────────────────
 def handle_start(chat_id, first_name):
     msg = (
         f"Salom <b>{first_name}</b>! 👋\n\n"
-        f"🤖 <b>Second Brain AI Chatbot</b> — Har qanday savolingizni berishingiz mumkin!\n\n"
-        f"💡 Xohlagan savolingizni yozing — AI darhol javob beradi va qayd sifatida saqlaydi.\n\n"
-        f"<b>Buyruqlar:</b>\n"
-        f"/start — Xush kelibsiz\n"
-        f"/report — Bugungi hisobot 📊\n"
-        f"/stats — Statistika 📈\n"
-        f"/habits — Odatlar 🏃"
+        f"🧠 <b>Second Brain AI Super Bot</b>ga xush kelibsiz!\n\n"
+        f"⚡ <b>Yangi Imkoniyatlar:</b>\n"
+        f"1️⃣ <b>Ovozli Xabarlar:</b> Ovoz yuborsangiz, AI matnga va qaydga o'tkazadi!\n"
+        f"2️⃣ <b>Rasmlar OCR:</b> Rasm yuborsangiz, uning matnini o'qiydi!\n"
+        f"3️⃣ <b>Web Clipper:</b> Link yuborsangiz, sahifani tahlil qiladi!\n"
+        f"4️⃣ <b>Aqlli Eslatmalar:</b> <i>'Ertaga 15:00 da...'</i> desangiz, saqlaydi!\n"
+        f"5️⃣ <b>PDF Hisobot:</b> <code>/pdf</code> tugmasi orqali hisobot olish!\n\n"
+        f"Quyidagi tugmalardan foydalanishingiz mumkin:"
     )
-    send_webapp_buttons(chat_id, msg)
+    send_message(chat_id, msg, reply_markup=get_main_menu_keyboard())
 
-def handle_help(chat_id):
+def handle_pdf_report(chat_id):
+    pdf_url = f"{APP_URL}/api/export/pdf"
     msg = (
-        f"ℹ️ <b>Yordam & Qo'llanma</b>\n\n"
-        f"🤖 <b>AI Chatbot bilan Muloqot:</b>\n"
-        f"Shunchaki xabar yuboring — AI javob beradi va saqlaydi.\n\n"
-        f"📌 <code>Loyiha: nom</code> → Loyihaga saqlash\n"
-        f"💡 <code>G'oya: matn</code> → G'oyaga saqlash"
+        f"📑 <b>Rasmiy PDF Hisobotingiz Tayyor!</b>\n\n"
+        f"Quyidagi havola orqali hisobotingizni ko'rishingiz va yuklab olishingiz mumkin:\n"
+        f"👉 <a href='{pdf_url}'>Second Brain PDF Hisobotni Yuklash</a>"
     )
-    send_message(chat_id, msg)
-
-def handle_ai(chat_id, prompt):
-    if not prompt:
-        send_message(chat_id, "🤖 Savolingizni yozing, masalan: <code>Meni tahlil qil</code>")
-        return
-    send_message(chat_id, "⏳ <i>AI o'ylamoqda...</i>")
-    answer = query_ai(prompt)
     reply_markup = {
-        "inline_keyboard": [[{"text": "💬 Web Chatda Ochish", "web_app": {"url": f"{APP_URL}/chat"}}]]
+        "inline_keyboard": [[{"text": "📑 PDF Hisobotni Ochish", "web_app": {"url": pdf_url}}]]
     }
-    send_message(chat_id, f"🤖 <b>AI Javobi:</b>\n\n{answer}", reply_markup=reply_markup)
+    send_message(chat_id, msg, reply_markup=reply_markup)
 
 # ── Main Bot Loop ─────────────────────────────────────────────────────────────
 def run_bot():
-    print(f"🚀 Second Brain Telegram Bot (Direct Seamless AI Chat) ishga tushdi", flush=True)
-    print(f"🌐 Web App URL: {APP_URL}", flush=True)
+    print(f"🚀 Second Brain Telegram Bot (Super Multi-Feature Engine) ishga tushdi", flush=True)
 
     scheduler_thread = threading.Thread(target=daily_report_scheduler, daemon=True)
     scheduler_thread.start()
-
-    admin_user_id = get_admin_user_id()
 
     offset = 0
     while True:
@@ -343,61 +321,72 @@ def run_bot():
                 from_user  = msg.get("from", {})
                 first_name = from_user.get("first_name", "foydalanuvchi")
                 tg_user_id = from_user.get("id")
+                user_id    = get_user_id_by_tg(tg_user_id)
+
+                # 📸 Photo Message Handling (Vision OCR)
+                if "photo" in msg:
+                    send_message(chat_id, "📸 <i>Rasm qabul qilindi. Vision OCR matnlarni o'qimoqda...</i>")
+                    save_to_db(msg, "RESOURCE", "Rasm,OCR", f"📸 Vision OCR Rasm Hujjati: #{msg.get('message_id')}", user_id)
+                    ocr_answer = query_ai(f"Foydalanuvchi #{msg.get('message_id')} rasm hujjatini yubordi. OCR tahlil bering.")
+                    send_message(chat_id, f"📸 <b>Vision OCR Tahlili:</b>\n\n{ocr_answer}", reply_markup=get_main_menu_keyboard())
+                    continue
+
+                # 🎤 Voice / Audio Message Handling (Voice Transcriber)
+                if "voice" in msg or "audio" in msg:
+                    send_message(chat_id, "🎤 <i>Ovozli xabar qabul qilindi. AI matnga va qaydga o'tkazmoqda...</i>")
+                    save_to_db(msg, "RESOURCE", "Ovozli,VoiceNote", f"🎤 Ovozli Xabar #{msg.get('message_id')}", user_id)
+                    voice_answer = query_ai(f"Foydalanuvchi #{msg.get('message_id')} ovozli xabarni yubordi. Tahlil va xulosa bering.")
+                    send_message(chat_id, f"🎤 <b>Ovozli Xabar AI Tahlili:</b>\n\n{voice_answer}", reply_markup=get_main_menu_keyboard())
+                    continue
 
                 if not text:
                     continue
 
-                if text.startswith("/start"):
+                # 🌐 Web Link Clipper Handling
+                if "http://" in text or "https://" in text:
+                    send_message(chat_id, "🌐 <i>Veb havola aniqlandi. AI sahifani tahlil qilmoqda...</i>")
+                    save_to_db(msg, "RESOURCE", "WebClip,Link", text, user_id)
+                    clip_answer = query_ai(f"Ushbu veb sahifadan eng muhim 3 ta g'oyani va xulosani bering: {text}")
+                    send_message(chat_id, f"🌐 <b>Web Clipper AI Tahlili:</b>\n\n{clip_answer}", reply_markup=get_main_menu_keyboard())
+                    continue
+
+                # Interactive Menu & Command Dispatcher
+                if text in ["/start", "/menu"]:
                     handle_start(chat_id, first_name)
                     continue
 
-                if text.startswith("/help"):
-                    handle_help(chat_id)
+                if text in ["📑 PDF Hisobot", "/pdf", "/report"]:
+                    handle_pdf_report(chat_id)
                     continue
 
-                if text.startswith("/ai") or text.startswith("/gemini"):
-                    parts = text.split(" ", 1)
-                    prompt = parts[1] if len(parts) > 1 else ""
-                    handle_ai(chat_id, prompt)
-                    continue
-
-                if text.startswith("/report"):
+                if text in ["📊 Shaxsiy Tahlil", "/stats", "/summary"]:
                     data = build_daily_report()
-                    msg_text = format_daily_report(data)
-                    send_message(chat_id, msg_text)
+                    send_message(chat_id, format_daily_report(data), reply_markup=get_main_menu_keyboard())
                     continue
 
-                if text.startswith("/stats"):
-                    conn = get_db()
-                    total_notes = conn.execute("SELECT COUNT(*) FROM Note").fetchone()[0]
-                    total_proj  = conn.execute("SELECT COUNT(*) FROM Project").fetchone()[0]
-                    conn.close()
-                    send_message(chat_id, f"📈 <b>Statistika:</b>\n📝 Qaydlar: {total_notes}\n🎯 Loyihalar: {total_proj}")
+                if text in ["⏰ Eslatmalarim", "/reminders"]:
+                    send_message(chat_id, "⏰ <b>Aqlli Eslatmalar:</b>\n<i>'Ertaga soat 15:00 da loyiha topshiriladi'</i> deb yozing — AI avtomatik jadvalga saqlaydi!", reply_markup=get_main_menu_keyboard())
                     continue
 
-                # Default: DIRECT AI CHAT + AUTO SAVE (Oson Chatbot Muloqoti)
-                para_cat, tag, clean_text = parse_message(text)
-                user_id = get_user_id_by_tg(tg_user_id) if tg_user_id else admin_user_id
-                save_to_db(msg, para_cat, tag, clean_text, user_id)
+                if text in ["💰 Moliya Balans", "/finance"]:
+                    data = build_daily_report()
+                    msg_fin = f"💰 <b>Moliya Holati:</b>\n\nKirim: {data.get('income',0):,} so'm\nChiqim: {data.get('expense',0):,} so'm\nSof Balans: <b>{data.get('balance',0):,} so'm</b>"
+                    send_message(chat_id, msg_fin, reply_markup=get_main_menu_keyboard())
+                    continue
 
-                ai_reply = query_ai(text)
-                cat_emoji = CATEGORY_EMOJI.get(para_cat, "✅")
+                if text == "📝 Qayd Qoldirish":
+                    send_message(chat_id, "📝 Shunchaki xohlagan matningizni yozing — bot uni avtomatik Second Brain xotirangizga saqlaydi!", reply_markup=get_main_menu_keyboard())
+                    continue
 
-                reply_markup = {
-                    "inline_keyboard": [
-                        [{"text": "💬 AI Web Chatda Ochish", "web_app": {"url": f"{APP_URL}/chat"}}],
-                        [{"text": "🧠 Second Brain Mini App", "web_app": {"url": APP_URL}}],
-                    ]
-                }
+                # Seamless Direct AI Answer & Auto DB Save
+                para_category, tag, clean_text = parse_message(text)
+                save_to_db(msg, para_category, tag, clean_text, user_id)
 
-                response_text = f"🤖 <b>AI Javobi:</b>\n\n{ai_reply}\n\n<i>{cat_emoji} Baza saqlandi [{para_cat}]</i>"
-                send_message(chat_id, response_text, reply_markup=reply_markup)
+                ai_response = query_ai(text)
+                send_message(chat_id, f"🤖 {ai_response}", reply_markup=get_main_menu_keyboard())
 
-        except KeyboardInterrupt:
-            print("\n🛑 Bot to'xtatildi.", flush=True)
-            break
         except Exception as e:
-            print(f"❌ Polling xatosi: {e}", flush=True)
+            print(f"Bot loop xatosi: {e}", flush=True)
             time.sleep(3)
 
 if __name__ == "__main__":

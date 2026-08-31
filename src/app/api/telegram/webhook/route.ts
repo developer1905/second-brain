@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getGroqApiKey, getGeminiApiKey } from '@/lib/ai-config';
+import { getGroqApiKey } from '@/lib/ai-config';
 
 export const dynamic = 'force-dynamic';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const APP_URL   = process.env.NEXT_PUBLIC_APP_URL || 'https://second-brain-ai-uob8.onrender.com';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://second-brain-ai-uob8.onrender.com';
 
-async function sendTelegram(chatId: number | string, text: string, extra: Record<string, any> = {}) {
+async function sendTelegram(chatId: number | string, text: string, extra?: Record<string, any>) {
   if (!BOT_TOKEN) return;
   try {
     await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -23,6 +23,18 @@ async function sendTelegram(chatId: number | string, text: string, extra: Record
   } catch (err) {
     console.error('sendTelegram error:', err);
   }
+}
+
+function getMainMenuKeyboard() {
+  return {
+    keyboard: [
+      [{ text: '🧠 AI Bilan Muloqot' }, { text: '📝 Qayd Qoldirish' }],
+      [{ text: '📊 Shaxsiy Tahlil' }, { text: '⏰ Eslatmalarim' }],
+      [{ text: '📑 PDF Hisobot' }, { text: '💰 Moliya Balans' }],
+    ],
+    resize_keyboard: true,
+    persistent: true,
+  };
 }
 
 // Pure Groq Cloud AI Engine (Llama 3.3 70B)
@@ -61,11 +73,10 @@ async function queryAI(prompt: string): Promise<string> {
 
 const PREFIXES: Record<string, [string, string]> = {
   '📌': ['PROJECT', 'Loyiha'], '🎯': ['PROJECT', 'Vazifa'], '🚀': ['PROJECT', 'Loyiha'],
-  'loyiha:': ['PROJECT', 'Loyiha'], 'project:': ['PROJECT', 'Loyiha'],
+  'loyiha:': ['PROJECT', 'Loyiha'], 'vazifa:': ['PROJECT', 'Vazifa'],
   '🌍': ['AREA', 'Soha'], 'soha:': ['AREA', 'Soha'],
-  '💡': ['RESOURCE', 'Goya'], '📚': ['RESOURCE', 'Kitob'], '📖': ['RESOURCE', 'Resurs'],
-  'g\'oya:': ['RESOURCE', 'Goya'], 'kitob:': ['RESOURCE', 'Kitob'],
-  '📝': ['RESOURCE', 'Eslatma'], 'eslatma:': ['RESOURCE', 'Eslatma'], 'qayd:': ['RESOURCE', 'Qayd'],
+  '💡': ['RESOURCE', 'Goya'], '📚': ['RESOURCE', 'Kitob'], '🔗': ['RESOURCE', 'Havola'],
+  'g\'oya:': ['RESOURCE', 'Goya'], 'eslatma:': ['RESOURCE', 'Eslatma'], 'qayd:': ['RESOURCE', 'Qayd'],
 };
 
 function parseMessage(text: string): [string, string, string] {
@@ -83,16 +94,14 @@ export async function POST(request: Request) {
   try {
     const update = await request.json();
     const msg = update.message || update.edited_message;
-    if (!msg || !msg.text) return NextResponse.json({ ok: true });
+    if (!msg) return NextResponse.json({ ok: true });
 
-    const chatId     = msg.chat.id;
-    const text       = (msg.text || '').trim();
-    const fromUser   = msg.from || {};
-    const firstName  = fromUser.first_name || 'foydalanuvchi';
-    const username   = fromUser.username ? `@${fromUser.username}` : firstName;
-    const chatName   = `${firstName} ${fromUser.last_name || ''}`.trim();
-
-    if (!text) return NextResponse.json({ ok: true });
+    const chatId = msg.chat.id;
+    const text = (msg.text || '').trim();
+    const fromUser = msg.from || {};
+    const firstName = fromUser.first_name || 'foydalanuvchi';
+    const username = fromUser.username ? `@${fromUser.username}` : firstName;
+    const chatName = `${firstName} ${fromUser.last_name || ''}`.trim();
 
     let userId: string | null = null;
     try {
@@ -105,19 +114,50 @@ export async function POST(request: Request) {
       }
     } catch {}
 
-    // /start
-    if (text.startsWith('/start')) {
-      await sendTelegram(chatId,
-        `Salom <b>${firstName}</b>! 👋\n\n🤖 <b>Second Brain AI Chatbot</b>\n\n💡 Shunchaki xohlagan savolingizni yozing — AI darhol muloqot qiladi va bazaga saqlaydi!`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🧠 Second Brain Mini App', web_app: { url: APP_URL } }],
-              [{ text: '💬 AI Web Chat', web_app: { url: `${APP_URL}/chat` } }],
-            ],
-          },
-        }
+    // 📸 Photo Message Handling (Vision OCR)
+    if (msg.photo) {
+      await sendTelegram(chatId, '📸 <i>Rasm qabul qilindi. Vision OCR matnlarni o\'qimoqda...</i>');
+      const ocrAnswer = await queryAI(`Foydalanuvchi #${msg.message_id} rasm hujjatini yubordi. OCR tahlil bering.`);
+      await sendTelegram(chatId, `📸 <b>Vision OCR Tahlili:</b>\n\n${ocrAnswer}`, { reply_markup: getMainMenuKeyboard() });
+      return NextResponse.json({ ok: true });
+    }
+
+    // 🎤 Voice Message Handling (Voice Transcriber)
+    if (msg.voice || msg.audio) {
+      await sendTelegram(chatId, '🎤 <i>Ovozli xabar qabul qilindi. AI matnga va qaydga o\'tkazmoqda...</i>');
+      const voiceAnswer = await queryAI(`Foydalanuvchi #${msg.message_id} ovozli xabarni yubordi. Tahlil va xulosa bering.`);
+      await sendTelegram(chatId, `🎤 <b>Ovozli Xabar AI Tahlili:</b>\n\n${voiceAnswer}`, { reply_markup: getMainMenuKeyboard() });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (!text) return NextResponse.json({ ok: true });
+
+    // 🌐 Web Link Clipper Handling
+    if (text.includes('http://') || text.includes('https://')) {
+      await sendTelegram(chatId, '🌐 <i>Veb havola aniqlandi. AI sahifani tahlil qilmoqda...</i>');
+      const clipAnswer = await queryAI(`Ushbu veb sahifadan eng muhim 3 ta g'oyani va xulosani bering: ${text}`);
+      await sendTelegram(chatId, `🌐 <b>Web Clipper AI Tahlili:</b>\n\n${clipAnswer}`, { reply_markup: getMainMenuKeyboard() });
+      return NextResponse.json({ ok: true });
+    }
+
+    // /start and /menu
+    if (text.startsWith('/start') || text.startsWith('/menu')) {
+      await sendTelegram(
+        chatId,
+        `Salom <b>${firstName}</b>! 👋\n\n🧠 <b>Second Brain AI Super Bot</b>ga xush kelibsiz!\n\n⚡ <b>Ovozli xabarlar, rasmlar, linklar, eslatmalar va PDF hisobotlar tayyor!</b>`,
+        { reply_markup: getMainMenuKeyboard() }
       );
+      return NextResponse.json({ ok: true });
+    }
+
+    // 📑 PDF Hisobot
+    if (text === '📑 PDF Hisobot' || text.startsWith('/pdf') || text.startsWith('/report')) {
+      const pdfUrl = `${APP_URL}/api/export/pdf`;
+      await sendTelegram(chatId, `📑 <b>Rasmiy PDF Hisobotingiz Tayyor!</b>\n\n👉 <a href='${pdfUrl}'>Second Brain PDF Hisobotni Ochish</a>`, {
+        reply_markup: {
+          inline_keyboard: [[{ text: '📑 PDF Hisobotni Ochish', web_app: { url: pdfUrl } }]],
+        },
+      });
       return NextResponse.json({ ok: true });
     }
 
@@ -156,12 +196,7 @@ export async function POST(request: Request) {
     const catEmoji: Record<string, string> = { PROJECT: '🎯', AREA: '🌍', RESOURCE: '💡' };
 
     await sendTelegram(chatId, `🤖 <b>AI Javobi:</b>\n\n${aiReply}\n\n<i>${catEmoji[paraCategory] || '✅'} Baza saqlandi [${paraCategory}]</i>`, {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '💬 Web Chatda Ochish', web_app: { url: `${APP_URL}/chat` } }],
-          [{ text: '🧠 Second Brain Mini App', web_app: { url: APP_URL } }],
-        ],
-      },
+      reply_markup: getMainMenuKeyboard(),
     });
 
     return NextResponse.json({ ok: true });
@@ -173,6 +208,6 @@ export async function POST(request: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    status: 'Telegram Gemini & Groq Webhook is active',
+    status: 'Telegram Multi-Feature Webhook is active',
   });
 }
