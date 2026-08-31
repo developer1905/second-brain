@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getOpenRouterApiKey, getGeminiApiKey } from '@/lib/ai-config';
+import { getGroqApiKey, getOpenRouterApiKey, getGeminiApiKey } from '@/lib/ai-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,52 +33,84 @@ export async function POST(request: Request) {
     ].filter(Boolean).join('\n');
 
     let answer = '';
+    const cleanUserKey = userApiKey?.trim() || '';
 
-    const openrouterKey = userApiKey?.trim() || getOpenRouterApiKey();
-    if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
-      const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free', 'inclusionai/ling-3.0-flash-fin:free'];
-      const messagesPayload = [
-        {
-          role: 'system',
-          content: `Siz OpenRouter va Second Brain AI Copilotsiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Hech qanday shablon yoki statistika qo'shmang.\n\nKontekst:\n${contextText}`,
-        },
-        { role: 'user', content: userQuery },
-      ];
+    // 1. Groq API
+    const groqKey = cleanUserKey.startsWith('gsk_') ? cleanUserKey : getGroqApiKey();
+    if (groqKey && groqKey.startsWith('gsk_')) {
+      const groqModels = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
+      const systemMsg = `Siz Groq AI va Second Brain AI Copilotsiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Hech qanday shablon yoki statistika qo'shmang.\n\nKontekst:\n${contextText}`;
 
-      for (const model of openrouterModels) {
+      for (const model of groqModels) {
         try {
-          const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openrouterKey}`,
-              'HTTP-Referer': 'https://second-brain-ai-uob8.onrender.com',
-              'X-Title': 'Second Brain AI',
+              'Authorization': `Bearer ${groqKey}`,
+              'User-Agent': 'SecondBrainAI/1.0',
             },
             body: JSON.stringify({
               model,
-              messages: messagesPayload,
+              messages: [
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: userQuery },
+              ],
               temperature: 0.7,
             }),
           });
-
-          if (orRes.ok) {
-            const orData = await orRes.json();
-            const text = orData.choices?.[0]?.message?.content;
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const text = gData.choices?.[0]?.message?.content;
             if (text) {
               answer = text;
               break;
             }
           }
-        } catch (e) {
-          console.warn(`OpenRouter Copilot failed for ${model}:`, e);
+        } catch (e) {}
+      }
+    }
+
+    // 2. OpenRouter API Fallback
+    if (!answer) {
+      const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
+      if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
+        const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free'];
+        for (const model of openrouterModels) {
+          try {
+            const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openrouterKey}`,
+                'HTTP-Referer': 'https://second-brain-ai-uob8.onrender.com',
+                'X-Title': 'Second Brain AI',
+              },
+              body: JSON.stringify({
+                model,
+                messages: [
+                  { role: 'system', content: `Siz AI Copilotsiz. O'zbek tilida javob bering.\nKontekst:\n${contextText}` },
+                  { role: 'user', content: userQuery },
+                ],
+                temperature: 0.7,
+              }),
+            });
+            if (orRes.ok) {
+              const orData = await orRes.json();
+              const text = orData.choices?.[0]?.message?.content;
+              if (text) {
+                answer = text;
+                break;
+              }
+            }
+          } catch (e) {}
         }
       }
     }
 
-    // Fallback: Gemini API
+    // 3. Gemini Fallback
     if (!answer) {
-      const geminiKey = getGeminiApiKey();
+      const geminiKey = cleanUserKey.startsWith('AIzaSy') ? cleanUserKey : getGeminiApiKey();
       if (geminiKey) {
         try {
           const contents = [
