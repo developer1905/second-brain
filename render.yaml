@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: second-brain-ai
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --production=false && npx prisma generate && npm run build
+    startCommand: node scripts/render-start.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: file:./prisma/prod.db
+      - key: ADMIN_PASSWORD
+        value: admin2025
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ADMIN_ID
+        sync: false
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_GENERATIVE_AI_API_KEY
+        sync: false
+    healthCheckPath: /api/health
+    autoDeploy: true

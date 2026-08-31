@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ── User (Multi-Tenant Authentication) ───────────────────────────────────────
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  isActive     Boolean  @default(true)
+  isAdmin      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  notes            Note[]
+  projects         Project[]
+  books            Book[]
+  githubRepos      GithubRepo[]
+  transactions     Transaction[]
+  habits           Habit[]
+  flashcards       Flashcard[]
+  chatMessages     ChatMessage[]
+  memoryItems      MemoryItem[]
+  schedules        Schedule[]
+  telegramMessages TelegramMessage[]
+}
+
+model Note {
+  id           String   @id @default(uuid())
+  title        String
+  content      String
+  paraCategory String
+  sourceType   String
+  tags         String
+  externalUrl  String?
+  isArchived   Boolean  @default(false)
+  projectId    String?
+  areaId       String?
+  userId       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  area          Area?          @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  outgoingEdges BacklinkEdge[] @relation("SourceNote")
+  incomingEdges BacklinkEdge[] @relation("TargetNote")
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([areaId])
+  @@index([paraCategory])
+  @@index([sourceType])
+  @@index([createdAt])
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  status      String   @default("IN_PROGRESS")
+  progress    Int      @default(0)
+  deadline    String?
+  tags        String?
+  areaId      String?
+  userId      String?
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  area   Area?   @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tasks  Task[]
+  notes  Note[]
+
+  @@index([userId])
+  @@index([areaId])
+  @@index([status])
+}
+
+model Task {
+  id        String   @id @default(uuid())
+  title     String
+  status    String   @default("TODO")
+  priority  String   @default("MEDIUM")
+  dueDate   String?
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model Area {
+  id          String   @id @default(uuid())
+  name        String
+  icon        String
+  description String
+  metric      String?
+  createdAt   DateTime @default(now())
+
+  projects Project[]
+  notes    Note[]
+}
+
+model Resource {
+  id        String   @id @default(uuid())
+  title     String
+  type      String
+  url       String?
+  summary   String
+  content   String?
+  tags      String
+  createdAt DateTime @default(now())
+
+  @@index([type])
+}
+
+model BacklinkEdge {
+  id       String @id @default(uuid())
+  sourceId String
+  targetId String
+  label    String?
+
+  source Note @relation("SourceNote", fields: [sourceId], references: [id], onDelete: Cascade)
+  target Note @relation("TargetNote", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+  @@index([targetId])
+}
+
+model TelegramMessage {
+  id           String   @id @default(uuid())
+  telegramId   BigInt?
+  chatName     String
+  chatType     String   @default("PERSONAL")
+  fromName     String?
+  isOutgoing   Boolean  @default(false)
+  text         String
+  date         String
+  mediaType    String?
+  paraCategory String   @default("RESOURCE")
+  userId       String?
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([paraCategory])
+  @@index([date])
+}
+
+model GithubRepo {
+  id            String   @id @default(uuid())
+  name          String
+  fullName      String
+  description   String?
+  url           String
+  stars         Int      @default(0)
+  forks         Int      @default(0)
+  language      String?
+  readmeContent String?
+  userId        String?
+  syncedAt      DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model Book {
+  id          String   @id @default(uuid())
+  title       String
+  author      String
+  totalPages  Int      @default(0)
+  currentPage Int      @default(0)
+  fileType    String
+  summary     String
+  highlights  String
+  userId      String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  sessionId String
+  role      String
+  content   String
+  model     String   @default("gemini")
+  userId    String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([sessionId])
+}
+
+model MemoryItem {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  tags      String   @default("")
+  source    String   @default("manual")
+  sourceId  String?
+  isPinned  Boolean  @default(false)
+  userId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([isPinned])
+}
+
+model Schedule {
+  id          String    @id @default(uuid())
+  title       String
+  description String    @default("")
+  cronExpr    String?
+  oneTime     String?
+  isActive    Boolean   @default(true)
+  lastRan     DateTime?
+  nextRun     String?
+  tags        String    @default("")
+  userId      String?
+  createdAt   DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  title       String
+  amount      Float
+  type        String
+  category    String
+  date        String
+  description String?  @default("")
+  userId      String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([date])
+  @@index([type])
+}
+
+model Habit {
+  id          String     @id @default(uuid())
+  title       String
+  category    String     @default("Soha")
+  frequency   String     @default("DAILY")
+  streakCount Int        @default(0)
+  targetDays  Int        @default(7)
+  icon        String     @default("Flame")
+  userId      String?
+  createdAt   DateTime   @default(now())
+
+  user User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  logs HabitLog[]
+
+  @@index([userId])
+}
+
+model HabitLog {
+  id        String   @id @default(uuid())
+  habitId   String
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  date      String
+  completed Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([habitId])
+  @@index([date])
+}
+
+model Flashcard {
+  id          String   @id @default(uuid())
+  noteId      String?
+  question    String
+  answer      String
+  difficulty  String   @default("MEDIUM")
+  reviewCount Int      @default(0)
+  nextReview  String?
+  userId      String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}

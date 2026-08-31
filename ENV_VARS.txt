@@ -1,0 +1,10 @@
+# Render.com Environment Variables
+# Bu faylni Render dashboard ga ko'chiring
+
+DATABASE_URL=file:./prisma/prod.db
+ADMIN_PASSWORD=admin2025
+TELEGRAM_BOT_TOKEN=8877395712:AAFMXyeqy31c3fccZxVdRw45CIJ_aAefz3g
+TELEGRAM_ADMIN_ID=6542040260
+NEXT_PUBLIC_APP_URL=https://second-brain-ai.onrender.com
+NODE_ENV=production
+# GEMINI_API_KEY: Render dashboard environment variables ga o'zingiz kiriting

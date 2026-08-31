@@ -1,0 +1,16 @@
+{
+  "clients": [
+    {
+      "id": "878c55bb-0d2c-4be6-ac09-ed3f952382ce",
+      "name": "Umida Ramazonov",
+      "email": "defenderx1905@gmail.com",
+      "phone": "+998 20 001 72 88",
+      "company": "Dizayner",
+      "price": 1000,
+      "notes": "",
+      "dbFilename": "client_878c55bb-0d2c-4be6-ac09-ed3f952382ce.db",
+      "status": "TAYYOR",
+      "createdAt": "2026-08-16T10:14:20.550Z"
+    }
+  ]
+}
