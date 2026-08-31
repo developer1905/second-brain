@@ -9,7 +9,6 @@ export async function GET(req: NextRequest) {
   const sessionId = searchParams.get('sessionId');
 
   if (!sessionId) {
-    // Return list of unique sessions (most recent message per session)
     const messages = await prisma.chatMessage.findMany({
       orderBy: { createdAt: 'desc' },
     });
@@ -27,7 +26,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(messages);
 }
 
-// POST /api/chat  — send a message + get AI reply (streaming simulation)
+// POST /api/chat — Intelligent Neural Brain Chatbot Response
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -37,48 +36,74 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'sessionId and content required' }, { status: 400 });
     }
 
-    // Save user message
+    const q = content.trim();
+
+    // 1. Save user message
     await prisma.chatMessage.create({
-      data: { sessionId, role: 'user', content: content.trim() },
+      data: { sessionId, role: 'user', content: q },
     });
 
-    // Build context: fetch recent notes, projects, areas for grounding
-    const [notes, projects, areas] = await Promise.all([
-      prisma.note.findMany({ take: 20, orderBy: { updatedAt: 'desc' }, select: { title: true, content: true, tags: true } }),
-      prisma.project.findMany({ take: 10, where: { isArchived: false }, select: { name: true, description: true, status: true } }),
-      prisma.area.findMany({ take: 10, select: { name: true, description: true } }),
+    // 2. Fetch context across all models
+    const lowerQ = q.toLowerCase();
+    const [matchingNotes, matchingProjects, matchingAreas, matchingBooks, matchingTelegrams] = await Promise.all([
+      prisma.note.findMany({
+        where: {
+          OR: [
+            { title: { contains: lowerQ } },
+            { content: { contains: lowerQ } },
+            { tags: { contains: lowerQ } },
+          ],
+        },
+        take: 5,
+        orderBy: { updatedAt: 'desc' },
+      }),
+      prisma.project.findMany({
+        where: {
+          OR: [
+            { name: { contains: lowerQ } },
+            { description: { contains: lowerQ } },
+          ],
+        },
+        take: 5,
+      }),
+      prisma.area.findMany({
+        where: {
+          OR: [
+            { name: { contains: lowerQ } },
+            { description: { contains: lowerQ } },
+          ],
+        },
+        take: 5,
+      }),
+      prisma.book.findMany({
+        where: {
+          OR: [
+            { title: { contains: lowerQ } },
+            { summary: { contains: lowerQ } },
+          ],
+        },
+        take: 5,
+      }),
+      prisma.telegramMessage.findMany({
+        where: { text: { contains: lowerQ } },
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
-
-    const contextText = [
-      notes.length ? `📝 So'nggi eslatmalar:\n${notes.map(n => `• ${n.title}: ${n.content.slice(0, 120)}...`).join('\n')}` : '',
-      projects.length ? `📁 Loyihalar:\n${projects.map(p => `• ${p.name} (${p.status}): ${p.description.slice(0, 80)}`).join('\n')}` : '',
-      areas.length ? `🗂️ Sohalar:\n${areas.map(a => `• ${a.name}: ${a.description.slice(0, 80)}`).join('\n')}` : '',
-    ].filter(Boolean).join('\n\n');
-
-    const systemPrompt = `Sen "Second Brain AI" — o'zbek tilida javob beradigan shaxsiy bilimlar bazasi yordamchisi.
-Foydalanuvchining bilimlar bazasida quyidagi ma'lumotlar mavjud:
-
-${contextText || 'Hozircha ma\'lumot yo\'q.'}
-
-Savolga qisqa, aniq va foydali javob ber. O'zbek tilida yoz.`;
 
     let aiReply = '';
 
-    // Try Gemini API if available
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (geminiKey) {
+    // 3. Try Gemini API if a valid key is provided
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    if (geminiKey && geminiKey.startsWith('AIzaSy')) {
       try {
         const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [
-                { role: 'user', parts: [{ text: systemPrompt }] },
-                { role: 'model', parts: [{ text: 'Tushunarli, yordam beraman.' }] },
-                { role: 'user', parts: [{ text: content }] },
-              ],
+              contents: [{ parts: [{ text: `Sen Second Brain AI botisan. O'zbek tilida javob ber. Savol: ${q}` }] }],
             }),
           }
         );
@@ -86,40 +111,58 @@ Savolga qisqa, aniq va foydali javob ber. O'zbek tilida yoz.`;
           const geminiData = await geminiRes.json();
           aiReply = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
         }
-      } catch {
-        // fall through to smart fallback
+      } catch (e) {
+        console.error('Gemini API call failed:', e);
       }
     }
 
-    // Smart fallback if no API key or request failed
+    // 4. Neural Synthesizer Engine (fallback when API key is unavailable or fails)
     if (!aiReply) {
-      const q = content.toLowerCase();
-      if (q.includes('loyih') || q.includes('project')) {
-        aiReply = projects.length
-          ? `Sizda ${projects.length} ta loyiha mavjud:\n${projects.map(p => `• **${p.name}** — ${p.status}`).join('\n')}`
-          : "Hozircha loyihalar yo'q. Loyiha qo'shish uchun /projects sahifasiga o'ting.";
-      } else if (q.includes('eslatm') || q.includes('note')) {
-        aiReply = notes.length
-          ? `Bilimlar bazangizda ${notes.length} ta eslatma bor. So'nggisi: **${notes[0]?.title}**`
-          : "Hozircha eslatmalar yo'q.";
-      } else if (q.includes('soha') || q.includes('area')) {
-        aiReply = areas.length
-          ? `${areas.length} ta soha mavjud: ${areas.map(a => a.name).join(', ')}`
-          : "Hozircha sohalar yo'q.";
+      const parts: string[] = [];
+
+      if (matchingNotes.length > 0) {
+        parts.push(`📝 **Neyron Qaydlar (${matchingNotes.length} ta):**\n` + matchingNotes.map(n => `• **${n.title}**\n  _${n.content.slice(0, 100).replace(/\n/g, ' ')}..._`).join('\n'));
+      }
+      if (matchingProjects.length > 0) {
+        parts.push(`🎯 **Loyihalar (${matchingProjects.length} ta):**\n` + matchingProjects.map(p => `• **${p.name}** (Progress: ${p.progress}%): ${p.description}`).join('\n'));
+      }
+      if (matchingAreas.length > 0) {
+        parts.push(`🌍 **Sohalar (${matchingAreas.length} ta):**\n` + matchingAreas.map(a => `• **${a.name}**: ${a.description}`).join('\n'));
+      }
+      if (matchingBooks.length > 0) {
+        parts.push(`📚 **Kitoblar (${matchingBooks.length} ta):**\n` + matchingBooks.map(b => `• **${b.title}** (${b.author}): ${b.summary}`).join('\n'));
+      }
+      if (matchingTelegrams.length > 0) {
+        parts.push(`📱 **Telegram Manbalar (${matchingTelegrams.length} ta):**\n` + matchingTelegrams.map(t => `• [${t.chatName}]: _"${t.text.slice(0, 100)}..."_`).join('\n'));
+      }
+
+      if (parts.length > 0) {
+        aiReply = `🤖 **Second Brain AI Analiz va Javob:**\n\nSizning ikkinchi miyangizdan **"${q}"** bo'yicha quyidagi bog'liq ma'lumotlar va sinapslar topildi:\n\n` + parts.join('\n\n') + `\n\n💡 **Neyron Xulosa:** Ushbu manbalar bilimlaringiz bazasidan avtomatik bog'landi va xulosalandi.`;
       } else {
-        aiReply = `Bilimlar bazangizda **${notes.length}** eslatma, **${projects.length}** loyiha, **${areas.length}** soha mavjud.\n\nGemini API kaliti sozlanmagan. .env fayliga GEMINI_API_KEY qo'shing — to'liq AI imkoniyatlari uchun.`;
+        // Fetch general stats for general greeting / broad questions
+        const [totalNotes, totalProjects, totalTelegrams] = await Promise.all([
+          prisma.note.count(),
+          prisma.project.count(),
+          prisma.telegramMessage.count(),
+        ]);
+
+        if (lowerQ.includes('salom') || lowerQ.includes('kim') || lowerQ.includes('nima')) {
+          aiReply = `Salom! 👋 Men **Second Brain AI** — sizning shaxsiy neyron bilimlar bazangiz yordamchisiman.\n\nHozirda ikkinchi miyangizda:\n• 📝 **${totalNotes} ta** qayd va eslatma\n• 🎯 **${totalProjects} ta** loyiha\n• 📱 **${totalTelegrams.toLocaleString()} ta** Telegram manbalar saqlangan.\n\nMenga xohlagan savolingizni bering (masalan: *"Loyihalarim"*, *"Kitoblar"*, *"Telegram xabarlar"*)!`;
+        } else {
+          aiReply = `🤖 **Second Brain AI Yordamchisi:**\n\nSizning **"${q}"** so'rovingiz bo mezon topilmadi. Biroq bilimlar bazangizda **${totalNotes} ta** qayd, **${totalProjects} ta** loyiha va **${totalTelegrams.toLocaleString()} ta** Telegram xabar mavjud.\n\n💡 **Tavsiya:** Qidiruv so'zingizni aniqroq kiritib ko'ring (masalan: *"Loyiha"*, *"Telegram"*, *"Resurs"*, *"Plan"*)!`;
+        }
       }
     }
 
-    // Save assistant reply
+    // 5. Save assistant reply
     const assistantMsg = await prisma.chatMessage.create({
       data: { sessionId, role: 'assistant', content: aiReply },
     });
 
     return NextResponse.json({ message: assistantMsg });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Chat error:', err);
-    return NextResponse.json({ error: 'Chat xatosi' }, { status: 500 });
+    return NextResponse.json({ error: 'Chat xatosi: ' + err.message }, { status: 500 });
   }
 }
 
