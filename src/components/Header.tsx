@@ -67,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
     fetchGraphStats();
   }, [nodeCount, linkCount]);
   return (
-    <header className="sticky top-0 z-30 w-full h-14 sm:h-16 glass-panel border-b border-white/10 px-2 sm:px-4 md:px-6 flex items-center justify-between gap-2 overflow-hidden">
+    <header className="sticky top-0 z-40 w-full h-14 sm:h-16 glass-panel border-b border-white/10 px-2 sm:px-4 md:px-6 flex items-center justify-between gap-2 overflow-visible">
       {/* Brand & Logo + Sidebar Toggle */}
       <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {onToggleSidebar && (
