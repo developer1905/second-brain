@@ -75,7 +75,7 @@ def get_main_menu_keyboard():
         "persistent": True
     }
 
-# ── Pure Groq Cloud AI Engine (GPT-OSS 120B) ──────────────────────────────────
+# ── Pure Groq Cloud AI Engine (Qwen 3.8 27B) ──────────────────────────────────
 def query_ai(prompt):
     system_prompt = (
         "Siz Second Brain AI botisiz. Foydalanuvchining har qanday savoliga va muloqotiga Telegramda o'zbek tilida "
@@ -85,7 +85,7 @@ def query_ai(prompt):
     if GROQ_KEY and GROQ_KEY.startswith("gsk_"):
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
-            "model": "openai/gpt-oss-120b",
+            "model": "qwen/qwen3.8-27b",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}

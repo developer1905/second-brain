@@ -52,7 +52,7 @@ async function queryAI(prompt: string): Promise<string> {
           'User-Agent': 'SecondBrainBot/1.0',
         },
         body: JSON.stringify({
-          model: 'openai/gpt-oss-120b',
+          model: 'qwen/qwen3.8-27b',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },

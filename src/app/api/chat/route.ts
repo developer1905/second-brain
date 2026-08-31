@@ -89,10 +89,10 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     let aiReply = '';
     const cleanUserKey = userApiKey?.trim() || '';
 
-    // 1. GROQ API (gsk_...) - High Speed GPT-OSS 120B Engine
+    // 1. GROQ API (gsk_...) - High Speed Qwen 3.8 27B & GPT-OSS Engine
     const groqKey = cleanUserKey.startsWith('gsk_') ? cleanUserKey : getGroqApiKey();
     if (groqKey && groqKey.startsWith('gsk_')) {
-      const groqModels = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
+      const groqModels = ['qwen/qwen3.8-27b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'];
 
       for (const model of groqModels) {
         try {
