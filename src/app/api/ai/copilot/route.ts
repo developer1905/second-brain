@@ -13,24 +13,46 @@ export async function POST(request: Request) {
 
     const userQuery = prompt.trim();
     const lowerQuery = userQuery.toLowerCase();
-    const keywords = lowerQuery
-      .replace(/[^\w\s\u0400-\u04FF]/g, ' ')
-      .split(/\s+/)
-      .filter((w: string) => w.length > 2);
 
-    const OR_terms = keywords.length > 0 ? keywords.map((k: string) => ({ title: { contains: k } })) : [];
+    // Only inject DB context if explicitly requested
+    const needsContext =
+      lowerQuery.includes('telegram') ||
+      lowerQuery.includes('qayd') ||
+      lowerQuery.includes('loyiha') ||
+      lowerQuery.includes('baza') ||
+      lowerQuery.includes('eslatma') ||
+      lowerQuery.includes('miya') ||
+      lowerQuery.includes('hisobot');
 
-    const [notes, projects, telegrams] = await Promise.all([
-      keywords.length > 0 ? prisma.note.findMany({ where: { OR: OR_terms }, take: 4 }) : [],
-      keywords.length > 0 ? prisma.project.findMany({ where: { OR: keywords.map((k: string) => ({ name: { contains: k } })) }, take: 3 }) : [],
-      keywords.length > 0 ? prisma.telegramMessage.findMany({ where: { OR: keywords.map((k: string) => ({ text: { contains: k } })) }, take: 3 }) : [],
-    ]);
+    let contextText = '';
+    let notes: any[] = [];
+    let projects: any[] = [];
+    let telegrams: any[] = [];
 
-    const contextText = [
-      notes.map((n) => `${n.title}: ${n.content.slice(0, 150)}`).join('\n'),
-      projects.map((p) => `${p.name}: ${p.description}`).join('\n'),
-      telegrams.map((t) => `${t.text.slice(0, 150)}`).join('\n'),
-    ].filter(Boolean).join('\n');
+    if (needsContext) {
+      const keywords = lowerQuery
+        .replace(/[^\w\s\u0400-\u04FF]/g, ' ')
+        .split(/\s+/)
+        .filter((w: string) => w.length > 2);
+
+      const OR_terms = keywords.length > 0 ? keywords.map((k: string) => ({ title: { contains: k } })) : [];
+
+      [notes, projects, telegrams] = await Promise.all([
+        keywords.length > 0 ? prisma.note.findMany({ where: { OR: OR_terms }, take: 3 }) : [],
+        keywords.length > 0 ? prisma.project.findMany({ where: { OR: keywords.map((k: string) => ({ name: { contains: k } })) }, take: 3 }) : [],
+        keywords.length > 0 ? prisma.telegramMessage.findMany({ where: { OR: keywords.map((k: string) => ({ text: { contains: k } })) }, take: 3 }) : [],
+      ]);
+
+      contextText = [
+        notes.map((n) => `Qayd [${n.title}]: ${n.content.slice(0, 150)}`).join('\n'),
+        projects.map((p) => `Loyiha [${p.name}]: ${p.description}`).join('\n'),
+        telegrams.map((t) => `Telegram [${t.fromName}]: ${t.text.slice(0, 150)}`).join('\n'),
+      ].filter(Boolean).join('\n');
+    }
+
+    const systemPrompt = needsContext && contextText
+      ? `Siz Second Brain AI Copilotsiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Foydalanuvchi so'roviga tegishli quyidagi bazaviy ma'lumotlardan foydalanishingiz mumkin:\n\n${contextText}`
+      : `Siz aqlli AI yordamchisiz (ChatGPT / Gemini muqobili). O'zbek tilida erkin, samimiy, aniq va to'g'ridan-to'g'ri javob bering. So'ralmagan bo'lsa Telegram yoki zaxira manbalarini aslo tilga olmang.`;
 
     let answer = '';
     const cleanUserKey = userApiKey?.trim() || '';
@@ -39,7 +61,6 @@ export async function POST(request: Request) {
     const groqKey = cleanUserKey.startsWith('gsk_') ? cleanUserKey : getGroqApiKey();
     if (groqKey && groqKey.startsWith('gsk_')) {
       const groqModels = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
-      const systemMsg = `Siz Groq AI va Second Brain AI Copilotsiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Hech qanday shablon yoki statistika qo'shmang.\n\nKontekst:\n${contextText}`;
 
       for (const model of groqModels) {
         try {
@@ -53,7 +74,7 @@ export async function POST(request: Request) {
             body: JSON.stringify({
               model,
               messages: [
-                { role: 'system', content: systemMsg },
+                { role: 'system', content: systemPrompt },
                 { role: 'user', content: userQuery },
               ],
               temperature: 0.7,
@@ -89,7 +110,7 @@ export async function POST(request: Request) {
               body: JSON.stringify({
                 model,
                 messages: [
-                  { role: 'system', content: `Siz AI Copilotsiz. O'zbek tilida javob bering.\nKontekst:\n${contextText}` },
+                  { role: 'system', content: systemPrompt },
                   { role: 'user', content: userQuery },
                 ],
                 temperature: 0.7,
@@ -114,7 +135,7 @@ export async function POST(request: Request) {
       if (geminiKey) {
         try {
           const contents = [
-            { role: 'user', parts: [{ text: `Siz AI Copilotsiz. O'zbek tilida javob bering.\nKontekst:\n${contextText}` }] },
+            { role: 'user', parts: [{ text: systemPrompt }] },
             { role: 'user', parts: [{ text: userQuery }] },
           ];
 
@@ -136,7 +157,7 @@ export async function POST(request: Request) {
     }
 
     if (!answer) {
-      answer = `Siz so'ragan "${userQuery}" mavzusi bo'yicha tahlil tayyorlandi. Harakatlar rejasini tuzib beraymi? 😊`;
+      answer = `Siz so'ragan "${userQuery}" masalasiga javob tayyorladim. Qanday maslahat beray? 😊`;
     }
 
     return NextResponse.json({
