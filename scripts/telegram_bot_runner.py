@@ -29,7 +29,7 @@ if os.path.exists(ENV_LOCAL):
 BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ADMIN_ID   = os.getenv("TELEGRAM_ADMIN_ID", "")
 APP_URL    = os.getenv("NEXT_PUBLIC_APP_URL", "https://second-brain-ai-uob8.onrender.com")
-GROQ_KEY   = os.getenv("GROQ_API_KEY") or ("gsk_W9dl8F0Cj39kSXaYPMii" + "WGdyb3FYp6b5gVMRBojsvhbG1AoMgDkz")
+GROQ_KEY   = os.getenv("GROQ_API_KEY", "")
 
 if not BOT_TOKEN:
     print("❌ TELEGRAM_BOT_TOKEN topilmadi! .env.local faylini tekshiring.", flush=True)
