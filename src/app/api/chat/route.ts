@@ -76,12 +76,10 @@ ${tgList || 'Foydalanuvchi hali Telegram botiga yangi xabar yubormadi.'}
 - Telegram Qaydlari (${tgNotes.length} ta):
 ${noteList || 'Foydalanuvchi hali Telegram qaydlarini kiritmadi.'}
 
-- Umumi Qaydlar: ${generalNoteList || 'Hozircha qaydlar yo\'q.'}
+- Umumiy Qaydlar: ${generalNoteList || 'Hozircha qaydlar yo\'q.'}
 
-QAT'IY QOIDALAR:
-1. HECH QACHON "Kechirasiz, menda Telegram xabarlaringizga kirish yo'q" DEB AYTMANG!
-2. Agar Telegram xabarlari soni 0 ta bo'lsa: "Tizimingizda Telegram ulangan, lekin hali botimizga (@secondbrainn7_bot) xabar yuborilmadi. Telegram botga 1 ta bo'lsa ham xabar yuborsangiz, uni darhol shu yerda o'qib tahlil qilaman!" deb tushuntiring.
-3. Agar Telegram xabarlari mavjud bo'lsa, ushbu xabarlar asosida aniq va tartibli tahlil bering.`;
+QOIDA:
+Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botimizga (@secondbrainn7_bot) yangi xabar yuborilmadi. Botga 1 ta bo'lsa ham xabar yuborsangiz, uni darhol shu yerda o'qib tahlil qilaman!" deb javob bering.`;
 
     // Save user message to database
     await prisma.chatMessage.create({
@@ -165,26 +163,30 @@ QAT'IY QOIDALAR:
       }
     }
 
-    // 3. Gemini Fallback
+    // 3. Gemini Fallback with official system_instruction parameter
     if (!aiReply) {
       const geminiKey = cleanUserKey.startsWith('AIzaSy') ? cleanUserKey : getGeminiApiKey();
       if (geminiKey) {
         try {
-          const contents = [
-            { role: 'user', parts: [{ text: systemMsg }] },
-            ...history.slice(-6).map((h) => ({
-              role: h.role === 'user' ? 'user' : 'model',
-              parts: [{ text: h.content }],
-            })),
-            { role: 'user', parts: [{ text: userQuery }] },
-          ];
+          const payload = {
+            system_instruction: {
+              parts: [{ text: systemMsg }],
+            },
+            contents: [
+              ...history.slice(-6).map((h) => ({
+                role: h.role === 'user' ? 'user' : 'model',
+                parts: [{ text: h.content }],
+              })),
+              { role: 'user', parts: [{ text: userQuery }] },
+            ],
+          };
 
           const gRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents }),
+              body: JSON.stringify(payload),
             }
           );
 
