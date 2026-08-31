@@ -14,8 +14,19 @@ export async function POST(request: Request) {
     const userQuery = prompt.trim();
     const lowerQuery = userQuery.toLowerCase();
 
-    // Only inject DB context if explicitly requested
+    // Check if self-analysis or context is requested
+    const isSelfAnalysis =
+      lowerQuery.includes('analiz') ||
+      lowerQuery.includes('tahlil') ||
+      lowerQuery.includes('shaxsim') ||
+      lowerQuery.includes('xarakter') ||
+      lowerQuery.includes('profil') ||
+      lowerQuery.includes('haqimda') ||
+      lowerQuery.includes('kuchli tomon') ||
+      lowerQuery.includes('kimman');
+
     const needsContext =
+      isSelfAnalysis ||
       lowerQuery.includes('telegram') ||
       lowerQuery.includes('qayd') ||
       lowerQuery.includes('loyiha') ||
@@ -29,7 +40,45 @@ export async function POST(request: Request) {
     let projects: any[] = [];
     let telegrams: any[] = [];
 
-    if (needsContext) {
+    if (isSelfAnalysis) {
+      // Gather comprehensive statistics across all database entities
+      const [
+        allNotes,
+        allProjects,
+        allAreas,
+        allHabits,
+        allTx,
+        allBooks,
+        allRepos,
+        recentTelegrams,
+      ] = await Promise.all([
+        prisma.note.findMany({ select: { title: true, paraCategory: true, tags: true }, take: 15 }),
+        prisma.project.findMany({ select: { name: true, status: true, progress: true, description: true }, take: 10 }),
+        prisma.area.findMany({ select: { name: true }, take: 5 }),
+        prisma.habit.findMany({ select: { title: true, streakCount: true }, take: 10 }),
+        prisma.transaction.findMany({ select: { type: true, amount: true, category: true }, take: 20 }),
+        prisma.book.findMany({ select: { title: true, author: true }, take: 5 }),
+        prisma.githubRepo.findMany({ select: { name: true, language: true }, take: 5 }),
+        prisma.telegramMessage.findMany({ take: 20, orderBy: { createdAt: 'desc' }, select: { text: true, fromName: true } }),
+      ]);
+
+      const noteCategories = allNotes.map((n) => `${n.paraCategory}: ${n.title}`).join(', ');
+      const projectSummary = allProjects.map((p) => `${p.name} (${p.status}, ${p.progress}%)`).join(', ');
+      const habitSummary = allHabits.map((h) => `${h.title} (${h.streakCount} streak)`).join(', ');
+      const bookSummary = allBooks.map((b) => `"${b.title}" - ${b.author}`).join(', ');
+      const repoSummary = allRepos.map((r) => `${r.name} (${r.language})`).join(', ');
+
+      contextText = `
+=== FOYDALANUVCHINING SECOND BRAIN TIZIMIDAGI MA'LUMOTLARI ===
+- Qaydlar va G'oyalar (Jami ${allNotes.length}+): ${noteCategories}
+- Loyihalar (Jami ${allProjects.length}): ${projectSummary}
+- Sohalar: ${allAreas.map((a) => a.name).join(', ')}
+- Odatlar: ${habitSummary}
+- O'qilgan Kitoblar: ${bookSummary}
+- GitHub Kod Loyihalari: ${repoSummary}
+- So'nggi Telegram Xabarlari: ${recentTelegrams.map((t) => t.text.slice(0, 80)).join(' | ')}
+`;
+    } else if (needsContext) {
       const keywords = lowerQuery
         .replace(/[^\w\s\u0400-\u04FF]/g, ' ')
         .split(/\s+/)
@@ -50,9 +99,13 @@ export async function POST(request: Request) {
       ].filter(Boolean).join('\n');
     }
 
-    const systemPrompt = needsContext && contextText
-      ? `Siz Second Brain AI Copilotsiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Foydalanuvchi so'roviga tegishli quyidagi bazaviy ma'lumotlardan foydalanishingiz mumkin:\n\n${contextText}`
-      : `Siz aqlli AI yordamchisiz (ChatGPT / Gemini muqobili). O'zbek tilida erkin, samimiy, aniq va to'g'ridan-to'g'ri javob bering. So'ralmagan bo'lsa Telegram yoki zaxira manbalarini aslo tilga olmang.`;
+    let systemPrompt = `Siz aqlli AI yordamchisiz (ChatGPT / Gemini muqobili). O'zbek tilida erkin, samimiy, aniq va to'g'ridan-to'g'ri javob bering.`;
+
+    if (isSelfAnalysis) {
+      systemPrompt = `Siz Second Brain AI Psixolog va Produktivlik Tahlilchisiz. Foydalanuvchining barcha qaydlari, loyihalari, odatlari, kitoblari va telegram manbalari asosida uning shaxsiyatini, diqqat markazini va o'sish nuqtalarini chuqur tahlil qiling.\n\nTahlil Formati:\n1. 🎯 **Asosiy Diqqat Markazingiz va Qiziqishlaringiz**\n2. ⚡ **Ishchanlik va Produktivlik Natijalaringiz**\n3. 🧠 **Neyron Bilimlar Bazangiz Tahlili**\n4. 💡 **Kuchli Tomonlaringiz va O'sish Nuqtalaringiz**\n\nQuyidagi real ma'lumotlar asosida tahlil qiling:\n${contextText}`;
+    } else if (needsContext && contextText) {
+      systemPrompt = `Siz Second Brain AI Copilotsiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Foydalanuvchi so'roviga tegishli quyidagi bazaviy ma'lumotlardan foydalanishingiz mumkin:\n\n${contextText}`;
+    }
 
     let answer = '';
     const cleanUserKey = userApiKey?.trim() || '';
@@ -157,7 +210,7 @@ export async function POST(request: Request) {
     }
 
     if (!answer) {
-      answer = `Siz so'ragan "${userQuery}" masalasiga javob tayyorladim. Qanday maslahat beray? 😊`;
+      answer = `Siz so'ragan shaxsiy tahlilingiz tayyorlandi. Tizimingizda ${notes.length} ta qayd, ${projects.length} ta loyiha bor. Qaysi yo'nalish bo'yicha chuqurroq tahlil kerak? 😊`;
     }
 
     return NextResponse.json({
