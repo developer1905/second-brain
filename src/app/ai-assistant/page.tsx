@@ -96,8 +96,9 @@ export default function AiAssistantPage() {
           <div>
             <h1 className="text-xl font-extrabold text-white flex items-center gap-2">
               Neural AI Brain Copilot
-              <span className="px-2 py-0.5 text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-full font-mono font-bold">
-                70k+ Context Aware
+              <span className="px-2 py-0.5 text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/40 rounded-full font-mono font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                DeepSeek V3 Connected
               </span>
             </h1>
             <p className="text-xs text-slate-400">
