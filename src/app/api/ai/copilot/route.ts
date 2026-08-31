@@ -41,7 +41,6 @@ export async function POST(request: Request) {
     let telegrams: any[] = [];
 
     if (isSelfAnalysis) {
-      // Gather comprehensive statistics across all database entities
       const [
         allNotes,
         allProjects,
@@ -62,21 +61,20 @@ export async function POST(request: Request) {
         prisma.telegramMessage.findMany({ take: 20, orderBy: { createdAt: 'desc' }, select: { text: true, fromName: true } }),
       ]);
 
-      const noteCategories = allNotes.map((n) => `${n.paraCategory}: ${n.title}`).join(', ');
-      const projectSummary = allProjects.map((p) => `${p.name} (${p.status}, ${p.progress}%)`).join(', ');
-      const habitSummary = allHabits.map((h) => `${h.title} (${h.streakCount} streak)`).join(', ');
-      const bookSummary = allBooks.map((b) => `"${b.title}" - ${b.author}`).join(', ');
-      const repoSummary = allRepos.map((r) => `${r.name} (${r.language})`).join(', ');
+      const noteCategories = allNotes.map((n) => `[${n.paraCategory}] ${n.title}`).join(' | ');
+      const projectSummary = allProjects.map((p) => `${p.name} (${p.status}, ${p.progress}%)`).join(' | ');
+      const habitSummary = allHabits.map((h) => `${h.title} (${h.streakCount} kun streak)`).join(' | ');
+      const bookSummary = allBooks.map((b) => `"${b.title}" - ${b.author}`).join(' | ');
+      const repoSummary = allRepos.map((r) => `${r.name} (${r.language})`).join(' | ');
 
       contextText = `
-=== FOYDALANUVCHINING SECOND BRAIN TIZIMIDAGI MA'LUMOTLARI ===
-- Qaydlar va G'oyalar (Jami ${allNotes.length}+): ${noteCategories}
-- Loyihalar (Jami ${allProjects.length}): ${projectSummary}
+- Qaydlar: ${noteCategories}
+- Loyihalar: ${projectSummary}
 - Sohalar: ${allAreas.map((a) => a.name).join(', ')}
 - Odatlar: ${habitSummary}
-- O'qilgan Kitoblar: ${bookSummary}
-- GitHub Kod Loyihalari: ${repoSummary}
-- So'nggi Telegram Xabarlari: ${recentTelegrams.map((t) => t.text.slice(0, 80)).join(' | ')}
+- Kitoblar: ${bookSummary}
+- Kod Loyihalari: ${repoSummary}
+- Telegram: ${recentTelegrams.map((t) => t.text.slice(0, 60)).join(' | ')}
 `;
     } else if (needsContext) {
       const keywords = lowerQuery
@@ -99,12 +97,12 @@ export async function POST(request: Request) {
       ].filter(Boolean).join('\n');
     }
 
-    let systemPrompt = `Siz aqlli AI yordamchisiz (ChatGPT / Gemini muqobili). O'zbek tilida erkin, samimiy, aniq va to'g'ridan-to'g'ri javob bering.`;
+    let systemPrompt = `Siz aqlli AI yordamchisiz. O'zbek tilida erkin, samimiy, aniq va to'g'ridan-to'g'ri javob bering.`;
 
     if (isSelfAnalysis) {
-      systemPrompt = `Siz Second Brain AI Psixolog va Produktivlik Tahlilchisiz. Foydalanuvchining barcha qaydlari, loyihalari, odatlari, kitoblari va telegram manbalari asosida uning shaxsiyatini, diqqat markazini va o'sish nuqtalarini chuqur tahlil qiling.\n\nTahlil Formati:\n1. 🎯 **Asosiy Diqqat Markazingiz va Qiziqishlaringiz**\n2. ⚡ **Ishchanlik va Produktivlik Natijalaringiz**\n3. 🧠 **Neyron Bilimlar Bazangiz Tahlili**\n4. 💡 **Kuchli Tomonlaringiz va O'sish Nuqtalaringiz**\n\nQuyidagi real ma'lumotlar asosida tahlil qiling:\n${contextText}`;
+      systemPrompt = `Siz Second Brain AI Tahlilchisiz. Foydalanuvchining ma'lumotlari bo'yicha TARTIB BIALN VA BOSQICHMA-BOSQICH chuqur tahlil qiling.\n\nJAVOBNI QAT'IYAT BILAN QUYIDAGI TARTIBDA SHAKLLANTIRING:\n\n🧠 **SHAXSIY VA PRODUKTIVLIK TAHLILI**\n\n📌 **1. ASOSIY DIQQAT MARKAZI VA QIZIQISHLAR**\n• [Keltirilgan ma'lumotlar bo'yicha diqqat markazi tahlili]\n\n⚡ **2. LOYIHALAR VA PRODUKTIVLIK HOLATI**\n• [Loyihalar va odatlar bajarilishi tahlili]\n\n📚 **3. BILIMLAR BAZASI VA O'RGANISH**\n• [Qaydlar, kitoblar va manbalar tahlili]\n\n💡 **4. KUCHLI TOMONLAR VA TAVSIYALAR**\n• [3 ta amaliy va aniq tavsiya]\n\nFoydalanuvchi ma'lumotlari:\n${contextText}`;
     } else if (needsContext && contextText) {
-      systemPrompt = `Siz Second Brain AI Copilotsiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Foydalanuvchi so'roviga tegishli quyidagi bazaviy ma'lumotlardan foydalanishingiz mumkin:\n\n${contextText}`;
+      systemPrompt = `Siz Second Brain AI Copilotsiz. O'zbek tilida erkin, tartibli va aniq javob bering. Foydalanuvchi so'roviga tegishli quyidagi bazaviy ma'lumotlardan foydalanishingiz mumkin:\n\n${contextText}`;
     }
 
     let answer = '';

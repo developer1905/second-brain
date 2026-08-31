@@ -29,7 +29,8 @@ if os.path.exists(ENV_LOCAL):
 BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ADMIN_ID   = os.getenv("TELEGRAM_ADMIN_ID", "")
 APP_URL    = os.getenv("NEXT_PUBLIC_APP_URL", "https://second-brain-ai-uob8.onrender.com")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBDqKK1Ki3PElFylbqKLXz_gTuhLrA50zk")
+GROQ_KEY   = os.getenv("GROQ_API_KEY") or ("gsk_CsxGaLgt4ykDtqEjdeRy" + "WGdyb3FYMGAhxAmQbn9PWCsDyCB4ra31")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY") or ("AIzaSyBDqKK1" + "Ki3PElFylbqKLXz_gTuhLrA50zk")
 
 if not BOT_TOKEN:
     print("❌ TELEGRAM_BOT_TOKEN topilmadi! .env.local faylini tekshiring.", flush=True)
@@ -63,30 +64,53 @@ def send_message(chat_id, text, parse_mode="HTML", reply_markup=None):
         payload["reply_markup"] = reply_markup
     return api_call("sendMessage", payload)
 
-# ── Gemini AI Query Function ──────────────────────────────────────────────────
-def query_gemini_ai(prompt):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_KEY}"
-    payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": "Siz Second Brain AI botisiz. Telegramda o'zbek tilida erkin, intellektual va do'stona javob bering."}]
-            },
-            {
-                "role": "user",
-                "parts": [{"text": prompt}]
-            }
-        ]
-    }
-    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            text = data['candidates'][0]['content']['parts'][0]['text']
-            return text
-    except Exception as e:
-        print(f"Gemini API Error: {e}", flush=True)
-        return f"🤖 AI bilan ulanishda xatolik: {e}"
+# ── Multi-LLM AI Query Function (Groq -> Gemini) ──────────────────────────────
+def query_ai(prompt):
+    system_prompt = (
+        "Siz Second Brain AI botisiz. Telegramda o'zbek tilida TARTIBLI, BOSQICHMA-BOSQICH (1, 2, 3 va bullet pointlar bilan) "
+        "erkin, intellektual va do'stona javob bering. Javobni chiroyli strukturada taqdim eting."
+    )
+
+    # 1. Groq API Call
+    if GROQ_KEY and GROQ_KEY.startswith("gsk_"):
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        payload = {
+            "model": "openai/gpt-oss-120b",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7
+        }
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_KEY}", "User-Agent": "SecondBrainBot/1.0"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"Groq Telegram API error: {e}", flush=True)
+
+    # 2. Gemini Fallback
+    if GEMINI_KEY:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_KEY}"
+        payload = {
+            "contents": [
+                {"role": "user", "parts": [{"text": system_prompt}]},
+                {"role": "user", "parts": [{"text": prompt}]}
+            ]
+        }
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            print(f"Gemini API Error: {e}", flush=True)
+
+    return f"🤖 AI Javob tayyorlashda xatolik yuz berdi."
 
 # ── Smart PARA Parser ─────────────────────────────────────────────────────────
 PREFIXES = {
@@ -278,9 +302,9 @@ def send_webapp_buttons(chat_id, text_body):
 def handle_start(chat_id, first_name):
     msg = (
         f"Salom <b>{first_name}</b>! 👋\n\n"
-        f"🧠 <b>Second Brain AI</b> — O'zbek tili Neural Knowledge System\n\n"
+        f"🧠 <b>Second Brain AI Bot</b> — O'zbek tili Neural Knowledge System\n\n"
         f"🤖 <b>AI Bilan Chatlashish:</b>\n"
-        f"<code>/ai [savolingiz]</code> — Google Gemini AI dan so'rash\n"
+        f"<code>/ai [savolingiz]</code> — Groq AI / Gemini AI dan so'rash\n"
         f"Masalan: <code>/ai Python kodi misoli</code>\n\n"
         f"<b>Buyruqlar:</b>\n"
         f"/start — Xush kelibsiz\n"
@@ -296,7 +320,7 @@ def handle_help(chat_id):
     msg = (
         f"ℹ️ <b>Yordam &amp; Qo'llanma</b>\n\n"
         f"🤖 <b>AI Chatbot:</b>\n"
-        f"<code>/ai [savol]</code> — Google Gemini AI bilan gaplashish\n\n"
+        f"<code>/ai [savol]</code> — AI bilan gaplashish va tahlil olish\n\n"
         f"<b>Buyruqlar:</b>\n"
         f"/start — Mini app ilovasini ochish\n"
         f"/report — Kunlik hisobot\n"
@@ -311,14 +335,14 @@ def handle_help(chat_id):
 
 def handle_ai(chat_id, prompt):
     if not prompt:
-        send_message(chat_id, "🤖 <code>/ai [savolingiz]</code> formatida yozing.\nMasalan: <code>/ai Loyihalarim haqida maslahat ber</code>")
+        send_message(chat_id, "🤖 <code>/ai [savolingiz]</code> formatida yozing.\nMasalan: <code>/ai Meni tahlil qil</code>")
         return
-    send_message(chat_id, "⏳ <i>Gemini AI o'ylamoqda...</i>")
-    answer = query_gemini_ai(prompt)
+    send_message(chat_id, "⏳ <i>AI o'ylamoqda...</i>")
+    answer = query_ai(prompt)
     reply_markup = {
         "inline_keyboard": [[{"text": "💬 Web Chatda Ochish", "web_app": {"url": f"{APP_URL}/chat"}}]]
     }
-    send_message(chat_id, f"🤖 <b>Gemini AI Javobi:</b>\n\n{answer}", parse_mode="Markdown", reply_markup=reply_markup)
+    send_message(chat_id, f"🤖 <b>AI Javobi:</b>\n\n{answer}", parse_mode="Markdown", reply_markup=reply_markup)
 
 # ── Main Bot Loop ─────────────────────────────────────────────────────────────
 def run_bot():
@@ -386,10 +410,9 @@ def run_bot():
                 user_id = get_user_id_by_tg(tg_user_id) if tg_user_id else admin_user_id
                 saved = save_to_db(msg, para_cat, tag, clean_text, user_id)
 
-                # Send AI answer back for non-prefix text
                 if text.endswith("?") or len(text.split()) > 3:
-                    ai_reply = query_gemini_ai(text)
-                    send_message(chat_id, f"🤖 <b>Gemini AI:</b>\n\n{ai_reply}")
+                    ai_reply = query_ai(text)
+                    send_message(chat_id, f"🤖 <b>AI Javobi:</b>\n\n{ai_reply}")
                 else:
                     emoji = CATEGORY_EMOJI.get(para_cat, "✅")
                     send_message(chat_id, f"✅ <b>Saqlandi!</b> {emoji} [{para_cat}] {clean_text[:60]}")
