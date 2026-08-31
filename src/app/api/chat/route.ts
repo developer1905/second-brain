@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
     }
 
     const userQuery = content.trim();
-    const lowerQuery = userQuery.toLowerCase();
 
     // Always fetch recent Telegram messages & notes to ensure 100% full context access
     const [recentTgMsgs, tgNotes, allNotes] = await Promise.all([
@@ -67,24 +66,27 @@ export async function POST(req: NextRequest) {
     const noteList = tgNotes.map((n) => `[${n.paraCategory}] ${n.title}: ${n.content.slice(0, 120)}`).join('\n');
     const generalNoteList = allNotes.map((n) => `[${n.paraCategory}] ${n.title}`).join(' | ');
 
-    const telegramContext = `
-=== FOYDALANUVCHINING BAZADAGI TELEGRAM VA SECOND BRAIN MA'LUMOTLARI ===
+    const systemMsg = `Siz Second Brain AI yordamchisiz. Foydalanuvchining Telegram va Second Brain xotira bazasi bilan 100% bog'langansiz.
+
+FOYDALANUVCHINING SECOND BRAIN BAZASIDAGI REAL MA'LUMOTLARI:
 - Telegram Xabarlari Soni: ${recentTgMsgs.length} ta
 - So'nggi Telegram Xabarlari:
-${tgList || 'Hozircha Telegram xabarlari topilmadi.'}
+${tgList || 'Foydalanuvchi hali Telegram botiga yangi xabar yubormadi.'}
 
-- Telegram Qaydlari:
-${noteList || 'Hozircha Telegram qaydlari topilmadi.'}
+- Telegram Qaydlari (${tgNotes.length} ta):
+${noteList || 'Foydalanuvchi hali Telegram qaydlarini kiritmadi.'}
 
-- Barcha Qaydlar: ${generalNoteList}
-`;
+- Umumi Qaydlar: ${generalNoteList || 'Hozircha qaydlar yo\'q.'}
+
+QAT'IY QOIDALAR:
+1. HECH QACHON "Kechirasiz, menda Telegram xabarlaringizga kirish yo'q" DEB AYTMANG!
+2. Agar Telegram xabarlari soni 0 ta bo'lsa: "Tizimingizda Telegram ulangan, lekin hali botimizga (@secondbrainn7_bot) xabar yuborilmadi. Telegram botga 1 ta bo'lsa ham xabar yuborsangiz, uni darhol shu yerda o'qib tahlil qilaman!" deb tushuntiring.
+3. Agar Telegram xabarlari mavjud bo'lsa, ushbu xabarlar asosida aniq va tartibli tahlil bering.`;
 
     // Save user message to database
     await prisma.chatMessage.create({
       data: { sessionId, role: 'user', content: userQuery },
     });
-
-    const systemMsg = `Siz Second Brain AI yordamchisiz va foydalanuvchining Telegram bazasi bilan to'liq bog'langansiz. Sizda foydalanuvchining Telegram xabarlari va bazasiga 100% ruxsat mavjud.\n\nHECH QACHON "Menda Telegram xabarlaringizga kirish yo'q" DEB JAVOB BERMANG! Quyidagi real ma'lumotlar asosida foydalanuvchining savoliga aniq, samimiy va tartibli javob bering:\n\n${telegramContext}`;
 
     let aiReply = '';
     const cleanUserKey = userApiKey?.trim() || '';
