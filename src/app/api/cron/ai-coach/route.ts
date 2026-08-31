@@ -26,6 +26,14 @@ async function sendTelegramMessage(chatId: string | number, text: string) {
 
 // GET /api/cron/ai-coach — Triggers the Autonomous Proactive AI Personal Coach
 export async function GET(request: Request) {
+  return handleCoach(request);
+}
+
+export async function POST(request: Request) {
+  return handleCoach(request);
+}
+
+async function handleCoach(request: Request) {
   try {
     // 1. Collect 100% of User's Knowledge Base Entities
     const [notes, projects, habits, transactions, reminders, telegramMsgs] = await Promise.all([
