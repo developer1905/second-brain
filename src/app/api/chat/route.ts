@@ -43,55 +43,48 @@ export async function POST(req: NextRequest) {
     const userQuery = content.trim();
     const lowerQuery = userQuery.toLowerCase();
 
-    // Check if Telegram context or personal analysis is requested
-    const needsTelegramContext =
-      lowerQuery.includes('telegram') ||
-      lowerQuery.includes('tahlil') ||
-      lowerQuery.includes('analiz') ||
-      lowerQuery.includes('shaxsim') ||
-      lowerQuery.includes('qayd') ||
-      lowerQuery.includes('baza') ||
-      lowerQuery.includes('eslatma') ||
-      lowerQuery.includes('hisobot') ||
-      lowerQuery.includes('nima yozganman');
+    // Always fetch recent Telegram messages & notes to ensure 100% full context access
+    const [recentTgMsgs, tgNotes, allNotes] = await Promise.all([
+      prisma.telegramMessage.findMany({
+        take: 100,
+        orderBy: { createdAt: 'desc' },
+        select: { fromName: true, text: true, createdAt: true, paraCategory: true },
+      }),
+      prisma.note.findMany({
+        where: { sourceType: 'TELEGRAM' },
+        take: 50,
+        orderBy: { createdAt: 'desc' },
+        select: { title: true, content: true, paraCategory: true },
+      }),
+      prisma.note.findMany({
+        take: 30,
+        orderBy: { createdAt: 'desc' },
+        select: { title: true, content: true, paraCategory: true },
+      }),
+    ]);
 
-    let telegramContext = '';
-    if (needsTelegramContext) {
-      const [recentTgMsgs, tgNotes] = await Promise.all([
-        prisma.telegramMessage.findMany({
-          take: 50,
-          orderBy: { createdAt: 'desc' },
-          select: { fromName: true, text: true, createdAt: true, paraCategory: true },
-        }),
-        prisma.note.findMany({
-          where: { sourceType: 'TELEGRAM' },
-          take: 30,
-          orderBy: { createdAt: 'desc' },
-          select: { title: true, content: true, paraCategory: true },
-        }),
-      ]);
+    const tgList = recentTgMsgs.map((m) => `[${m.fromName}]: ${m.text.slice(0, 120)}`).join('\n');
+    const noteList = tgNotes.map((n) => `[${n.paraCategory}] ${n.title}: ${n.content.slice(0, 120)}`).join('\n');
+    const generalNoteList = allNotes.map((n) => `[${n.paraCategory}] ${n.title}`).join(' | ');
 
-      const tgList = recentTgMsgs.map((m) => `[${m.fromName}]: ${m.text.slice(0, 100)}`).join('\n');
-      const noteList = tgNotes.map((n) => `[${n.paraCategory}] ${n.title}: ${n.content.slice(0, 100)}`).join('\n');
+    const telegramContext = `
+=== FOYDALANUVCHINING BAZADAGI TELEGRAM VA SECOND BRAIN MA'LUMOTLARI ===
+- Telegram Xabarlari Soni: ${recentTgMsgs.length} ta
+- So'nggi Telegram Xabarlari:
+${tgList || 'Hozircha Telegram xabarlari topilmadi.'}
 
-      if (tgList || noteList) {
-        telegramContext = `
-=== FOYDALANUVCHINING TELEGRAM VA SECOND BRAIN MA'LUMOTLARI ===
-${tgList ? `--- So'nggi Telegram Xabarlari (${recentTgMsgs.length} ta) ---\n${tgList}` : ''}
-${noteList ? `--- Telegram Qaydlari (${tgNotes.length} ta) ---\n${noteList}` : ''}
+- Telegram Qaydlari:
+${noteList || 'Hozircha Telegram qaydlari topilmadi.'}
+
+- Barcha Qaydlar: ${generalNoteList}
 `;
-      }
-    }
 
     // Save user message to database
     await prisma.chatMessage.create({
       data: { sessionId, role: 'user', content: userQuery },
     });
 
-    let systemMsg = "Siz Second Brain AI yordamchisiz. O'zbek tilida erkin, samimiy, intellektual va aniq javob bering.";
-    if (needsTelegramContext && telegramContext) {
-      systemMsg = `Siz Second Brain AI yordamchisiz. Foydalanuvchining Telegram va bazaviy ma'lumotlari quyida keltirilgan. Savolga ushbu real ma'lumotlar asosida aniq va tartibli javob bering:\n\n${telegramContext}`;
-    }
+    const systemMsg = `Siz Second Brain AI yordamchisiz va foydalanuvchining Telegram bazasi bilan to'liq bog'langansiz. Sizda foydalanuvchining Telegram xabarlari va bazasiga 100% ruxsat mavjud.\n\nHECH QACHON "Menda Telegram xabarlaringizga kirish yo'q" DEB JAVOB BERMANG! Quyidagi real ma'lumotlar asosida foydalanuvchining savoliga aniq, samimiy va tartibli javob bering:\n\n${telegramContext}`;
 
     let aiReply = '';
     const cleanUserKey = userApiKey?.trim() || '';
