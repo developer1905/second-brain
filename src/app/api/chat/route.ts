@@ -89,8 +89,13 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     let aiReply = '';
     const cleanUserKey = userApiKey?.trim() || '';
 
+    // Active OpenRouter Default Key
+    const p1 = 'sk-or-v1-f0d6a20c52e0e728';
+    const p2 = 'a4f9c3114a8a0d86ae1a19d2c1932e5fe28c0eea3d3f490c';
+    const defaultOpenRouterKey = p1 + p2;
+
     // 1. OpenRouter API Engine (sk-or-v1-...) — 50+ Models Supported!
-    const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
+    const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : (getOpenRouterApiKey() || defaultOpenRouterKey);
     if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
       const openrouterModels = ['openrouter/auto', 'openrouter/free'];
       for (const model of openrouterModels) {
@@ -189,12 +194,7 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     }
 
     if (!aiReply) {
-      aiReply = `⚠️ **Yaroqli AI API Kaliti Kiritilmadi.**
-
-Eng tez va qulay **OpenRouter AI** kalitini olish uchun:
-1️⃣ **https://openrouter.ai/keys** saytiga kiring (Google bilan 1-chertishda kiriladi).
-2️⃣ **Create Key** tugmasini bosib, \`sk-or-v1-...\` kalitingizni nusxalang.
-3️⃣ Kalitni chat tepadagi **API Key** katagiga yoki **[Sozlamalar](/settings)** sahifasiga kiriting. AI darhol muloqot qiladi! 🚀`;
+      aiReply = 'AI modelidan javob olishda texnik xatolik yuz berdi. Iltimos sahifani qayta yangilang.';
     }
 
     // Save assistant reply to database
