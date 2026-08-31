@@ -15,6 +15,10 @@ import {
   Sparkles,
   CheckCircle2,
   Volume2,
+  Globe,
+  Camera,
+  Clock,
+  Printer,
 } from 'lucide-react';
 
 interface QuickCaptureModalProps {
@@ -54,40 +58,34 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
         if (isOpen) {
           onClose();
         } else {
-          // Open modal
           const btn = document.querySelector('[data-quick-capture-btn]') as HTMLButtonElement;
           btn?.click();
         }
-      }
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Voice recording handlers using Web Audio API
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
         }
       };
 
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const url = URL.createObjectURL(audioBlob);
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
         setAudioUrl(url);
       };
 
-      mediaRecorder.start();
+      mediaRecorderRef.current.start();
       setIsRecording(true);
       setRecordingTime(0);
 
@@ -95,7 +93,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
         setRecordingTime((prev) => prev + 1);
       }, 1000);
     } catch (err) {
-      alert("Mikrofon ruxsati berilmadi yoki qo'llab-quvvatlanmaydi!");
+      alert("Mikrofon ruxsati berilmadi yoki qo'llab-quvvatlanmaydi.");
     }
   };
 
@@ -119,6 +117,57 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
     }
   };
 
+  // 1-Click Web Clipper Trigger
+  const handleWebClip = async () => {
+    const url = prompt("Veb sahifa linkini (URL) kiriting:");
+    if (!url) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/ai/clip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccessMsg("🌐 Veb sahifa muvaffaqiyatli saqlandi va AI bilan tahlil qilindi!");
+        setTimeout(() => { setSuccessMsg(''); onClose(); }, 1500);
+      }
+    } catch (e) {
+      alert("Veb saqlashda xatolik");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 1-Click Smart Reminder Trigger
+  const handleAddReminder = async () => {
+    const text = prompt("Aqlli Eslatma matnini kiriting (masalan: Ertaga 15:00 da loyiha uchrashuvi):");
+    if (!text) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: text }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccessMsg(data.message);
+        setTimeout(() => { setSuccessMsg(''); onClose(); }, 1500);
+      }
+    } catch (e) {
+      alert("Eslatma saqlashda xatolik");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 1-Click Print PDF Report Trigger
+  const handlePrintPDF = () => {
+    window.open('/api/export/pdf', '_blank');
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim() && !title.trim() && !audioUrl) {
@@ -128,20 +177,26 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
 
     setLoading(true);
     try {
-      const res = await fetch('/api/quick-capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          content,
-          category,
-          sourceType: audioUrl ? 'VOICE' : 'NOTE',
-          tags,
-          audioData: audioUrl ? 'AUDIO_BLOB_RECORDED' : undefined,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Saqlashda xatolik yuz berdi");
+      if (audioUrl) {
+        await fetch('/api/ai/voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transcript: content || title || 'Ovozli qayd', audioName: title || 'Ovozli Qayd' }),
+        });
+      } else {
+        const res = await fetch('/api/quick-capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            content,
+            category,
+            sourceType: 'NOTE',
+            tags,
+          }),
+        });
+        if (!res.ok) throw new Error("Saqlashda xatolik yuz berdi");
+      }
 
       setSuccessMsg("Eslatma neyron miyaga saqlandi!");
       setTimeout(() => {
@@ -172,7 +227,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-base bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-400">
-                Tezkor Qayd & Ovozli Memo
+                Tezkor Qayd & AI Power Tools
               </h3>
               <p className="text-xs text-slate-400">Cmd+K / Ctrl+K orqali har doim ochiq</p>
             </div>
@@ -192,6 +247,45 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
             <span>{successMsg}</span>
           </div>
         )}
+
+        {/* 5 Power AI Quick Actions Bar */}
+        <div className="grid grid-cols-4 gap-2">
+          <button
+            type="button"
+            onClick={handleWebClip}
+            className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-300 hover:bg-sky-500/20 text-[11px] font-mono font-bold flex flex-col items-center gap-1 transition"
+          >
+            <Globe className="w-4 h-4 text-sky-400" />
+            <span>Web Clipper</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAddReminder}
+            className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 hover:bg-purple-500/20 text-[11px] font-mono font-bold flex flex-col items-center gap-1 transition"
+          >
+            <Clock className="w-4 h-4 text-purple-400" />
+            <span>Eslatgich</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrintPDF}
+            className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 text-[11px] font-mono font-bold flex flex-col items-center gap-1 transition"
+          >
+            <Printer className="w-4 h-4 text-emerald-400" />
+            <span>PDF Hisobot</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={startRecording}
+            className="p-2 rounded-xl bg-pink-500/10 border border-pink-500/30 text-pink-300 hover:bg-pink-500/20 text-[11px] font-mono font-bold flex flex-col items-center gap-1 transition"
+          >
+            <Mic className="w-4 h-4 text-pink-400 animate-pulse" />
+            <span>Ovoz Yozish</span>
+          </button>
+        </div>
 
         <form onSubmit={handleSave} className="space-y-4">
           {/* Title Input */}
@@ -219,49 +313,33 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
             </span>
           </div>
 
-          {/* Voice Memo Web Audio API Section */}
-          <div className="p-3 rounded-xl bg-slate-950/60 border border-white/10 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              {!isRecording ? (
-                <button
-                  type="button"
-                  onClick={startRecording}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-pink-500/20 text-pink-400 border border-pink-500/40 hover:bg-pink-500/30 text-xs font-semibold transition"
-                >
-                  <Mic className="w-4 h-4 animate-pulse" />
-                  <span>Ovoz Yozish</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={stopRecording}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/30 text-red-300 border border-red-500/50 hover:bg-red-500/40 text-xs font-semibold transition animate-pulse"
-                >
-                  <Square className="w-4 h-4" />
-                  <span>To'xtatish ({recordingTime}s)</span>
-                </button>
-              )}
-
-              {audioUrl && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={toggleAudioPlay}
-                    className="p-2 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 hover:bg-cyan-500/30"
-                  >
-                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  </button>
-                  <span className="text-xs text-slate-300 font-mono flex items-center gap-1">
-                    <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-                    Ovozli xabar tayyor
-                  </span>
-                  <audio ref={audioRef} src={audioUrl} onEnded={() => setIsPlaying(false)} className="hidden" />
-                </div>
-              )}
+          {/* Voice Memo Recording Status Bar */}
+          {isRecording && (
+            <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-between">
+              <span className="text-xs font-mono text-red-300 animate-pulse">🔴 Ovoz yozilmoqda: {recordingTime}s</span>
+              <button
+                type="button"
+                onClick={stopRecording}
+                className="px-3 py-1 rounded-lg bg-red-500 text-white font-bold text-xs"
+              >
+                To'xtatish
+              </button>
             </div>
+          )}
 
-            <span className="text-[10px] text-slate-400 font-mono">Web Audio API • Ovozli Eslatgich</span>
-          </div>
+          {audioUrl && (
+            <div className="flex items-center gap-2 p-2 rounded-xl bg-white/5 border border-white/10 text-xs font-mono">
+              <button
+                type="button"
+                onClick={toggleAudioPlay}
+                className="p-1.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
+              >
+                {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              </button>
+              <span>Ovozli memo tayyor</span>
+              <audio ref={audioRef} src={audioUrl} onEnded={() => setIsPlaying(false)} className="hidden" />
+            </div>
+          )}
 
           {/* PARA Category Selection Pills */}
           <div>
