@@ -1,44 +1,75 @@
 /**
- * Render.com Start Script
- * - prod.db bo'lmasa initial_data.db yoki blank_template.db dan nusxalaydi
- * - Next.js serverni ishga tushiradi
+ * Render.com Startup Script
+ * - initial_data.db (56MB) ni prisma/dev.db, prisma/prod.db va root dev.db/prod.db ga ko'chiradi
+ * - Prisma db push running status: barcha jadvallar yaratiladi va 70k xabarlar saqlanadi
+ * - Next.js serverini boshlaydi
  */
-const { spawn } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const PROD_DB    = path.join(__dirname, '..', 'prisma', 'prod.db');
-const DEV_DB     = path.join(__dirname, '..', 'prisma', 'dev.db');
-const INITIAL_DB = path.join(__dirname, '..', 'prisma', 'initial_data.db');
-const BLANK_DB   = path.join(__dirname, '..', 'prisma', 'blank_template.db');
+const ROOT_DIR   = path.resolve(__dirname, '..');
+const PRISMA_DIR = path.join(ROOT_DIR, 'prisma');
 
-// 1. initial_data.db mavjud bo'lsa prod.db va dev.db ga nusxalash
-const sourceDb = fs.existsSync(INITIAL_DB) ? INITIAL_DB : BLANK_DB;
+const INITIAL_DB = path.join(PRISMA_DIR, 'initial_data.db');
+const BLANK_DB   = path.join(PRISMA_DIR, 'blank_template.db');
+const sourceDb   = fs.existsSync(INITIAL_DB) ? INITIAL_DB : BLANK_DB;
+
+const targets = [
+  path.join(PRISMA_DIR, 'dev.db'),
+  path.join(PRISMA_DIR, 'prod.db'),
+  path.join(ROOT_DIR, 'dev.db'),
+  path.join(ROOT_DIR, 'prod.db'),
+];
 
 if (fs.existsSync(sourceDb)) {
-  const sourceSize = fs.statSync(sourceDb).size;
-  console.log(`📋 ${path.basename(sourceDb)} (${(sourceSize / (1024*1024)).toFixed(1)}MB) dan prod.db va dev.db nusxalanmoqda...`);
-  
-  const prodSize = fs.existsSync(PROD_DB) ? fs.statSync(PROD_DB).size : 0;
-  if (!fs.existsSync(PROD_DB) || prodSize < 100000) {
-    fs.copyFileSync(sourceDb, PROD_DB);
-    console.log('✅ prod.db nusxalandi va tiklandi.');
-  }
+  const sizeMb = (fs.statSync(sourceDb).size / (1024 * 1024)).toFixed(1);
+  console.log(`📋 Baza (${path.basename(sourceDb)}, ${sizeMb}MB) barcha joylashuvlarga ko'chirilmoqda...`);
 
-  const devSize = fs.existsSync(DEV_DB) ? fs.statSync(DEV_DB).size : 0;
-  if (!fs.existsSync(DEV_DB) || devSize < 100000) {
-    fs.copyFileSync(sourceDb, DEV_DB);
-    console.log('✅ dev.db nusxalandi va tiklandi.');
-  }
+  targets.forEach((targetPath) => {
+    try {
+      const exists = fs.existsSync(targetPath);
+      const targetSize = exists ? fs.statSync(targetPath).size : 0;
+      if (!exists || targetSize < 100000) {
+        fs.copyFileSync(sourceDb, targetPath);
+        console.log(`  ✅ Nusxalandi: ${targetPath}`);
+      } else {
+        console.log(`  ℹ️  Mavjud (${(targetSize / (1024*1024)).toFixed(1)}MB): ${targetPath}`);
+      }
+    } catch (err) {
+      console.error(`  ⚠️ Nusxalash xatosi (${targetPath}):`, err.message);
+    }
+  });
 } else {
-  console.log('⚠️ Baza nusxasi topilmadi.');
+  console.log('⚠️ Baza manbasi topilmadi.');
 }
 
-// 2. Next.js serverni ishga tushirish (prisma db push BAJARILMAYDI — baza o'chib ketishini oldini olish uchun)
+// 2. Prisma DB push (jadvallar yo'q bo'lsa avtomatik yaratadi, ma'lumotlarni saqlaydi)
+try {
+  console.log('🔄 Prisma db push (schema sync)...');
+  execSync('npx prisma db push --skip-generate', {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      DATABASE_URL: `file:${path.join(PRISMA_DIR, 'dev.db')}`,
+    },
+  });
+  console.log('✅ Prisma db push muvaffaqiyatli yakunlandi.');
+} catch (e) {
+  console.error('⚠️ Prisma db push ogohlantirishi:', e.message);
+}
+
+// 3. Absolute path set for process
+process.env.DATABASE_URL = `file:${path.join(PRISMA_DIR, 'dev.db')}`;
+
+// 4. Next.js server
 console.log('🚀 Next.js server ishga tushmoqda...');
 const next = spawn('node', ['node_modules/next/dist/bin/next', 'start', '-p', process.env.PORT || '3000'], {
   stdio: 'inherit',
-  env: { ...process.env },
+  env: {
+    ...process.env,
+    DATABASE_URL: `file:${path.join(PRISMA_DIR, 'dev.db')}`,
+  },
 });
 
 next.on('error', (err) => {

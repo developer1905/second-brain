@@ -10,7 +10,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        value: file:./prod.db
+        value: file:./prisma/dev.db
       - key: ADMIN_PASSWORD
         value: admin2025
       - key: TELEGRAM_BOT_TOKEN
