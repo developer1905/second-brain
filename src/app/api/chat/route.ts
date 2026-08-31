@@ -42,56 +42,97 @@ export async function POST(req: NextRequest) {
 
     const userQuery = content.trim();
 
-    // Fetch 100% of User's Database Knowledge Base for OpenRouter AI
-    const [recentTgMsgs, totalTgCount, tgNotes, allNotes, projects, transactions] = await Promise.all([
+    // 1. Dynamic Keyword Extraction from userQuery for 70k+ Deep DB Search
+    const searchWords = userQuery
+      .toLowerCase()
+      .replace(/[^\w\s\u0400-\u04FF]/gi, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !['haqida', 'bilan', 'nima', 'menga', 'mening', 'oqlib', 'ber', 'ayt', 'salom', 'qanday', 'nimalar', 'gaplashganman'].includes(w));
+
+    const tgSearchConditions = searchWords.map((w) => ({
+      OR: [
+        { text: { contains: w } },
+        { fromName: { contains: w } },
+        { chatName: { contains: w } },
+      ],
+    }));
+
+    const noteSearchConditions = searchWords.map((w) => ({
+      OR: [
+        { title: { contains: w } },
+        { content: { contains: w } },
+      ],
+    }));
+
+    // 2. Fetch Targeted Search Matches + System Stats simultaneously
+    const [matchedTgMsgs, matchedNotes, recentTgMsgs, totalTgCount, allNotes, projects, transactions] = await Promise.all([
+      tgSearchConditions.length > 0
+        ? prisma.telegramMessage.findMany({
+            where: { OR: tgSearchConditions.flatMap((c) => c.OR) },
+            take: 60,
+            orderBy: { createdAt: 'desc' },
+            select: { fromName: true, chatName: true, text: true, date: true },
+          })
+        : [],
+      noteSearchConditions.length > 0
+        ? prisma.note.findMany({
+            where: { OR: noteSearchConditions.flatMap((c) => c.OR) },
+            take: 30,
+            orderBy: { createdAt: 'desc' },
+            select: { title: true, content: true, paraCategory: true },
+          })
+        : [],
       prisma.telegramMessage.findMany({
-        take: 100,
+        take: 40,
         orderBy: { createdAt: 'desc' },
         select: { fromName: true, text: true, createdAt: true, paraCategory: true },
       }),
       prisma.telegramMessage.count(),
       prisma.note.findMany({
-        where: { sourceType: 'TELEGRAM' },
-        take: 50,
+        take: 20,
         orderBy: { createdAt: 'desc' },
         select: { title: true, content: true, paraCategory: true },
       }),
-      prisma.note.findMany({
-        take: 30,
-        orderBy: { createdAt: 'desc' },
-        select: { title: true, content: true, paraCategory: true },
-      }),
-      prisma.project.findMany({ take: 20, select: { name: true, status: true, progress: true } }),
-      prisma.transaction.findMany({ take: 20, select: { title: true, amount: true, type: true } }),
+      prisma.project.findMany({ take: 15, select: { name: true, status: true, progress: true } }),
+      prisma.transaction.findMany({ take: 15, select: { title: true, amount: true, type: true } }),
     ]);
 
     const income = transactions.filter((t) => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
     const expense = transactions.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
 
-    const tgList = recentTgMsgs.map((m) => `• [${m.fromName}]: ${m.text}`).join('\n');
-    const noteList = tgNotes.map((n) => `• [${n.paraCategory}] Sarlavha: "${n.title}" | Matni: "${n.content}"`).join('\n');
-    const generalNoteList = allNotes.map((n) => `• [${n.paraCategory}] Sarlavha: "${n.title}" | To'liq Matni: "${n.content}"`).join('\n');
+    // Format Targeted Search Matches
+    const searchTgResultFormatted = matchedTgMsgs.length > 0
+      ? matchedTgMsgs.map((m) => `• [${m.date?.slice(0, 10) || 'Telegram'}] ${m.chatName || m.fromName}: "${m.text}"`).join('\n')
+      : "So'rov kalit so'zi bo'yicha maxsus Telegram suhbatlari topilmadi.";
+
+    const searchNoteResultFormatted = matchedNotes.length > 0
+      ? matchedNotes.map((n) => `• [${n.paraCategory}] Sarlavha: "${n.title}" | Matn: "${n.content}"`).join('\n')
+      : '';
+
+    const recentTgList = recentTgMsgs.map((m) => `• [${m.fromName}]: ${m.text}`).join('\n');
+    const generalNoteList = allNotes.map((n) => `• [${n.paraCategory}] ${n.title}: ${n.content}`).join('\n');
     const projectList = projects.map((p) => `• ${p.name} (${p.status} - ${p.progress}%)`).join('\n');
 
-    const systemMsg = `Siz Second Brain OpenRouter AI yordamchisiz. Foydalanuvchining 70,000+ ma'lumotlar arxivi, Telegrami va xotirasiga 100% to'liq kirish huquqiga egasiz.
+    const systemMsg = `Siz Second Brain OpenRouter AI yordamchisiz. Foydalanuvchining 70,500+ ma'lumotlar arxivi va Telegram suhbatlariga 100% to'liq chuqur qidiruv huquqiga egasiz.
 
-FOYDALANUVCHINING SECOND BRAIN BAZASIDAGI REAL MA'LUMOTLARI:
-- Telegram Baza Arxivi: ${totalTgCount} ta xabar (70,000+ arxiv bazasi)
-- So'nggi Telegram Xabarlari:
-${tgList || 'Foydalanuvchi hali Telegram botiga yangi xabar yubormadi.'}
+FOYDALANUVCHINING 70,500+ TELEGRAM BAZASIDAN QIDIRUV VA TAHLIL NATIJALARI:
+- Telegram Baza Arxivi: ${totalTgCount} ta xabar
+- Moliya Balansi: Kirim ${income.toLocaleString()} so'm | Chiqim ${expense.toLocaleString()} so'm
 
-- Telegram Qaydlari (${tgNotes.length} ta):
-${noteList || 'Hali Telegram qaydlari kiritilmadi.'}
+🔎 SO'ROV BO'YICHA TELEGRAM BAZASIDAN TOPILGAN ANIQ SUHBATLAR (${matchedTgMsgs.length} ta):
+${searchTgResultFormatted}
 
-- Umumiy Qaydlar: ${generalNoteList || 'Hozircha qaydlar yo\'q.'}
+${searchNoteResultFormatted ? `🔎 SO'ROV BO'YICHA TOPILGAN QAYDLAR:\n${searchNoteResultFormatted}\n` : ''}
 
-- Faol Loyihalar:
-${projectList || 'Hozircha faol loyihalar yo\'q'}
+📌 SO'NGGI TELEGRAM SUHBATLARI:
+${recentTgList}
 
-- Moliya Balansi: Kirim ${income.toLocaleString()} so'm | Chiqim ${expense.toLocaleString()} so'm | Sof: ${(income - expense).toLocaleString()} so'm
+📌 SO'NGGI QAYDLAR VA LOYIHALAR:
+${generalNoteList}
+${projectList}
 
 QOIDA:
-Foydalanuvchining savollariga va so'rovlariga uning Second Brain bazasidagi ma'lumotlariga va Telegram arxiviga tayangan holda o'zbek tilida erkin, samimiy, intellektual va TARTIBLI javob bering.`;
+Yuqoridagi 70,500+ Telegram suhbatlari va baza ma'lumotlariga tayanib, foydalanuvchining savoliga o'zbek tilida erkin, samimiy, aniq va TARTIBLI javob bering.`;
 
     // Save user message to database
     await prisma.chatMessage.create({

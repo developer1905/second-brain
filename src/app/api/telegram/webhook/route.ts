@@ -37,9 +37,32 @@ function getMainMenuKeyboard() {
   };
 }
 
-async function getDatabaseFullContext(): Promise<string> {
+async function getDatabaseFullContext(userQuery: string): Promise<string> {
   try {
+    const searchWords = userQuery
+      .toLowerCase()
+      .replace(/[^\w\s\u0400-\u04FF]/gi, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !['haqida', 'bilan', 'nima', 'menga', 'mening', 'oqlib', 'ber', 'ayt', 'salom', 'qanday', 'nimalar', 'gaplashganman'].includes(w));
+
+    const tgSearchConditions = searchWords.map((w) => ({
+      OR: [
+        { text: { contains: w } },
+        { fromName: { contains: w } },
+        { chatName: { contains: w } },
+      ],
+    }));
+
+    const noteSearchConditions = searchWords.map((w) => ({
+      OR: [
+        { title: { contains: w } },
+        { content: { contains: w } },
+      ],
+    }));
+
     const [
+      matchedTgMsgs,
+      matchedNotes,
       totalTgMsgs,
       recentTgMsgs,
       totalNotes,
@@ -47,55 +70,78 @@ async function getDatabaseFullContext(): Promise<string> {
       projects,
       tasks,
       transactions,
-      schedules
     ] = await Promise.all([
+      tgSearchConditions.length > 0
+        ? prisma.telegramMessage.findMany({
+            where: { OR: tgSearchConditions.flatMap((c) => c.OR) },
+            take: 60,
+            orderBy: { createdAt: 'desc' },
+            select: { fromName: true, chatName: true, text: true, date: true },
+          })
+        : [],
+      noteSearchConditions.length > 0
+        ? prisma.note.findMany({
+            where: { OR: noteSearchConditions.flatMap((c) => c.OR) },
+            take: 30,
+            orderBy: { createdAt: 'desc' },
+            select: { title: true, content: true, paraCategory: true },
+          })
+        : [],
       prisma.telegramMessage.count(),
-      prisma.telegramMessage.findMany({ take: 50, orderBy: { createdAt: 'desc' }, select: { fromName: true, text: true, paraCategory: true } }),
+      prisma.telegramMessage.findMany({ take: 30, orderBy: { createdAt: 'desc' }, select: { fromName: true, text: true } }),
       prisma.note.count(),
-      prisma.note.findMany({ take: 30, orderBy: { createdAt: 'desc' }, select: { title: true, content: true, paraCategory: true } }),
+      prisma.note.findMany({ take: 20, orderBy: { createdAt: 'desc' }, select: { title: true, content: true, paraCategory: true } }),
       prisma.project.findMany({ take: 15, orderBy: { createdAt: 'desc' }, select: { name: true, status: true, progress: true } }),
       prisma.task.findMany({ take: 15, orderBy: { createdAt: 'desc' }, select: { title: true, status: true } }),
       prisma.transaction.findMany({ take: 20, select: { title: true, amount: true, type: true } }),
-      prisma.schedule.findMany({ take: 10, select: { title: true, oneTime: true } })
     ]);
 
     const income = transactions.filter(t => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
     const expense = transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
 
-    const tgSummary = recentTgMsgs.map(m => `• [${m.fromName}]: ${m.text}`).join('\n');
-    const noteSummary = recentNotes.map(n => `• [${n.paraCategory}] SARLAVHA: "${n.title}" | TO'LIQ MATNI: "${n.content}"`).join('\n');
-    const projectSummary = projects.map(p => `• Loyiha: "${p.name}" (Status: ${p.status}, Bajarilishi: ${p.progress}%)`).join('\n');
-    const taskSummary = tasks.map(t => `• Vazifa: "${t.title}" (Holati: ${t.status})`).join('\n');
+    const searchTgFormatted = matchedTgMsgs.length > 0
+      ? matchedTgMsgs.map(m => `• [${m.date?.slice(0, 10) || 'Telegram'}] ${m.chatName || m.fromName}: "${m.text}"`).join('\n')
+      : 'Ushbu so\'rov bo\'yicha Telegram suhbatlaridan alohida natijalar topilmadi.';
 
-    return `FOYDALANUVCHINING BARCHA SECOND BRAIN BAZASI MA'LUMOTLARI VA TO'LIQ MATNLARI:
-- Telegram Baza Arxivi: ${totalTgMsgs} ta xabar (70,000+ ma'lumotlar bazasi)
+    const searchNoteFormatted = matchedNotes.length > 0
+      ? matchedNotes.map(n => `• [${n.paraCategory}] Sarlavha: "${n.title}" | Matn: "${n.content}"`).join('\n')
+      : '';
+
+    const tgSummary = recentTgMsgs.map(m => `• [${m.fromName}]: ${m.text}`).join('\n');
+    const noteSummary = recentNotes.map(n => `• [${n.paraCategory}] Sarlavha: "${n.title}" | Matn: "${n.content}"`).join('\n');
+    const projectSummary = projects.map(p => `• Loyiha: "${p.name}" (${p.status} - ${p.progress}%)`).join('\n');
+    const taskSummary = tasks.map(t => `• Vazifa: "${t.title}" (${t.status})`).join('\n');
+
+    return `FOYDALANUVCHINING BARCHA SECOND BRAIN BAZASI VA 70,500+ TELEGRAM SUHBATLARI:
+- Telegram Baza Arxivi: ${totalTgMsgs} ta xabar
 - Saqlangan Qaydlar Soni: ${totalNotes} ta
 - Moliyaviy Balans: Kirim ${income.toLocaleString()} so'm | Chiqim ${expense.toLocaleString()} so'm
 
-- So'nggi Telegram Xabarlari va Matnlari:
+🔎 SO'ROV BO'YICHA TELEGRAM BAZASIDAN TOPILGAN ANIQ SUHBATLAR (${matchedTgMsgs.length} ta):
+${searchTgFormatted}
+
+${searchNoteFormatted ? `🔎 SO'ROV BO'YICHA TOPILGAN QAYDLAR:\n${searchNoteFormatted}\n` : ''}
+
+📌 SO'NGGI TELEGRAM SUHBATLARI:
 ${tgSummary || 'Hali xabarlar mavjud emas'}
 
-- Saqlangan Qaydlar va Ularning TO'LIQ MATNLARI:
+📌 SO'NGGI QAYDLAR VA LOYIHALAR:
 ${noteSummary || 'Hali qaydlar mavjud emas'}
-
-- Faol Loyihalar:
 ${projectSummary || 'Hozircha faol loyihalar mavjud emas'}
-
-- Bajarilayotgan Vazifalar:
 ${taskSummary || 'Hozircha vazifalar mavjud emas'}`;
   } catch (e) {
     return 'Baza ma\'lumotlarini o\'qishda qisman xatolik bo\'ldi.';
   }
 }
 
-// OpenRouter AI Engine (DeepSeek / Qwen) with FULL 70K Database Context Access
+// OpenRouter AI Engine (DeepSeek / Qwen) with 70,500+ Telegram Deep Search
 async function queryAI(prompt: string): Promise<string> {
-  const dbContext = await getDatabaseFullContext();
-  const systemPrompt = `Siz Second Brain AI botisiz. Sizda foydalanuvchining 70,000+ Telegram ma'lumotlari, loyihalari, qaydlari va moliya balansiga 100% to'liq kirish huquqi bor.
+  const dbContext = await getDatabaseFullContext(prompt);
+  const systemPrompt = `Siz Second Brain OpenRouter AI botisiz. Sizda foydalanuvchining 70,500+ Telegram suhbatlari, loyihalari, qaydlari va moliya balansiga 100% to'liq chuqur qidiruv va o'qish huquqi bor.
 
 ${dbContext}
 
-QOIDA: Foydalanuvchining savoliga uning Second Brain bazasidagi ma'lumotlariga va Telegram arxiviga tayangan holda o'zbek tilida erkin, samimiy, intellektual va TARTIBLI javob bering.`;
+QOIDA: Foydalanuvchining savoliga uning 70,500+ Telegram suhbatlari va baza ma'lumotlariga tayangan holda o'zbek tilida erkin, samimiy, aniq va TARTIBLI javob bering.`;
 
   const p1 = 'sk-or-v1-f0d6a20c52e0e728';
   const p2 = 'a4f9c3114a8a0d86ae1a19d2c1932e5fe28c0eea3d3f490c';
@@ -310,6 +356,6 @@ export async function POST(request: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    status: 'Telegram OpenRouter Webhook with Full 70K DB Context Access is active',
+    status: 'Telegram OpenRouter Webhook with 70,500+ Deep Search Engine is active',
   });
 }
