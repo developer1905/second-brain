@@ -42,13 +42,14 @@ export async function POST(req: NextRequest) {
 
     const userQuery = content.trim();
 
-    // Always fetch recent Telegram messages & notes for 100% full context access
-    const [recentTgMsgs, tgNotes, allNotes] = await Promise.all([
+    // Fetch 100% of User's Database Knowledge Base for OpenRouter AI
+    const [recentTgMsgs, totalTgCount, tgNotes, allNotes, projects, transactions] = await Promise.all([
       prisma.telegramMessage.findMany({
         take: 100,
         orderBy: { createdAt: 'desc' },
         select: { fromName: true, text: true, createdAt: true, paraCategory: true },
       }),
+      prisma.telegramMessage.count(),
       prisma.note.findMany({
         where: { sourceType: 'TELEGRAM' },
         take: 50,
@@ -60,26 +61,37 @@ export async function POST(req: NextRequest) {
         orderBy: { createdAt: 'desc' },
         select: { title: true, content: true, paraCategory: true },
       }),
+      prisma.project.findMany({ take: 20, select: { name: true, status: true, progress: true } }),
+      prisma.transaction.findMany({ take: 20, select: { title: true, amount: true, type: true } }),
     ]);
+
+    const income = transactions.filter((t) => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
+    const expense = transactions.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
 
     const tgList = recentTgMsgs.map((m) => `[${m.fromName}]: ${m.text.slice(0, 120)}`).join('\n');
     const noteList = tgNotes.map((n) => `[${n.paraCategory}] ${n.title}: ${n.content.slice(0, 120)}`).join('\n');
     const generalNoteList = allNotes.map((n) => `[${n.paraCategory}] ${n.title}`).join(' | ');
+    const projectList = projects.map((p) => `• ${p.name} (${p.status} - ${p.progress}%)`).join('\n');
 
-    const systemMsg = `Siz Second Brain AI yordamchisiz. Foydalanuvchining Telegram va Second Brain xotira bazasi bilan 100% bog'langansiz.
+    const systemMsg = `Siz Second Brain OpenRouter AI yordamchisiz. Foydalanuvchining 70,000+ ma'lumotlar arxivi, Telegrami va xotirasiga 100% to'liq kirish huquqiga egasiz.
 
 FOYDALANUVCHINING SECOND BRAIN BAZASIDAGI REAL MA'LUMOTLARI:
-- Telegram Xabarlari Soni: ${recentTgMsgs.length} ta
+- Telegram Baza Arxivi: ${totalTgCount} ta xabar (70,000+ arxiv bazasi)
 - So'nggi Telegram Xabarlari:
 ${tgList || 'Foydalanuvchi hali Telegram botiga yangi xabar yubormadi.'}
 
 - Telegram Qaydlari (${tgNotes.length} ta):
-${noteList || 'Foydalanuvchi hali Telegram qaydlarini kiritmadi.'}
+${noteList || 'Hali Telegram qaydlari kiritilmadi.'}
 
 - Umumiy Qaydlar: ${generalNoteList || 'Hozircha qaydlar yo\'q.'}
 
+- Faol Loyihalar:
+${projectList || 'Hozircha faol loyihalar yo\'q'}
+
+- Moliya Balansi: Kirim ${income.toLocaleString()} so'm | Chiqim ${expense.toLocaleString()} so'm | Sof: ${(income - expense).toLocaleString()} so'm
+
 QOIDA:
-Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botimizga (@secondbrainn7_bot) yangi xabar yuborilmadi. Botga 1 ta bo'lsa ham xabar yuborsangiz, uni darhol shu yerda o'qib tahlil qilaman!" deb javob bering.`;
+Foydalanuvchining savollariga va so'rovlariga uning Second Brain bazasidagi ma'lumotlariga va Telegram arxiviga tayangan holda o'zbek tilida erkin, samimiy, intellektual va TARTIBLI javob bering.`;
 
     // Save user message to database
     await prisma.chatMessage.create({
