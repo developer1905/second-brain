@@ -14,16 +14,16 @@ services:
       - key: ADMIN_PASSWORD
         value: admin2025
       - key: DEEPSEEK_API_KEY
-        value: sk-45c4187a0fa74b37b3a258d00d1d8dd1
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_GENERATIVE_AI_API_KEY
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_ADMIN_ID
         sync: false
       - key: NEXT_PUBLIC_APP_URL
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GOOGLE_GENERATIVE_AI_API_KEY
         sync: false
     healthCheckPath: /api/health
     autoDeploy: true

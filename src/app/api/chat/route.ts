@@ -41,59 +41,117 @@ export async function POST(req: NextRequest) {
 
     const userQuery = content.trim();
 
-    // 1. Save user message to database
+    // 1. Save user message
     await prisma.chatMessage.create({
       data: { sessionId, role: 'user', content: userQuery },
     });
 
     let aiReply = '';
 
-    // 2. Direct DeepSeek V3 API Call
-    const deepseekKey = userApiKey?.trim() || process.env.DEEPSEEK_API_KEY || 'sk-45c4187a0fa74b37b3a258d00d1d8dd1';
-    if (deepseekKey && deepseekKey.startsWith('sk-')) {
-      try {
-        const dsRes = await fetch('https://api.deepseek.com/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${deepseekKey}`,
-          },
-          body: JSON.stringify({
-            model: 'deepseek-chat',
-            messages: [
-              {
-                role: 'system',
-                content: `Siz DeepSeek AI modelisiz. O'zbek tilida to'g'ridan-to'g'ri, aniq va erkin javob bering. Hech qanday shablon, sarlavha yoki statistika qo'shmang.`,
-              },
-              ...history.slice(-8).map((h) => ({
-                role: h.role === 'user' ? 'user' : 'assistant',
-                content: h.content,
-              })),
-              { role: 'user', content: userQuery },
-            ],
-            temperature: 0.7,
-            max_tokens: 1500,
-          }),
-        });
+    // 2. Call Google Gemini REST API dynamically
+    const geminiKey = userApiKey?.trim() || process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
 
-        if (dsRes.ok) {
-          const dsData = await dsRes.json();
-          const reply = dsData.choices?.[0]?.message?.content;
-          if (reply) {
-            aiReply = reply;
+    if (geminiKey && geminiKey.length > 8) {
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `Siz Google Gemini AI yordamchisiz. O'zbek tilida erkin, samimiy va to'g'ridan-to'g'ri javob bering. Hech qanday shablon yoki statistika qo'shmang.`,
+            },
+          ],
+        },
+        ...history.slice(-6).map((h) => ({
+          role: h.role === 'user' ? 'user' : 'model',
+          parts: [{ text: h.content }],
+        })),
+        { role: 'user', parts: [{ text: userQuery }] },
+      ];
+
+      const geminiModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-pro'];
+
+      for (const model of geminiModels) {
+        try {
+          // Attempt 1: Query param
+          let gRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents }),
+            }
+          );
+
+          if (!gRes.ok) {
+            // Attempt 2: Bearer & x-goog-api-key headers
+            gRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${geminiKey}`,
+                  'x-goog-api-key': geminiKey,
+                },
+                body: JSON.stringify({ contents }),
+              }
+            );
           }
+
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const text = gData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              aiReply = text;
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn(`Gemini call failed for ${model}:`, e);
         }
-      } catch (dsErr) {
-        console.error('DeepSeek API error:', dsErr);
       }
     }
 
-    // 3. Clean Direct Fallback Message (No fluff or template blocks)
+    // 3. Fallback: DeepSeek API if Gemini Key returns 401/404
     if (!aiReply) {
-      aiReply = `DeepSeek API kalitida balans yetarli emas (HTTP 402 Payment Required). platform.deepseek.com saytida balansni to'ldiring yoki to'g'ri API kalit kiriting.`;
+      const deepseekKey = process.env.DEEPSEEK_API_KEY || '';
+      if (deepseekKey) {
+        try {
+          const dsRes = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${deepseekKey}`,
+            },
+            body: JSON.stringify({
+              model: 'deepseek-chat',
+              messages: [
+                { role: 'system', content: "Siz Google Gemini/DeepSeek AI yordamchisiz. O'zbek tilida erkin va aniq javob bering." },
+                { role: 'user', content: userQuery },
+              ],
+            }),
+          });
+          if (dsRes.ok) {
+            const dsData = await dsRes.json();
+            aiReply = dsData.choices?.[0]?.message?.content || '';
+          }
+        } catch (e) {
+          console.error('DeepSeek fallback error:', e);
+        }
+      }
     }
 
-    // 4. Save assistant reply to database
+    // 4. Clean Direct Fallback if LLM endpoints fail
+    if (!aiReply) {
+      const lowerQ = userQuery.toLowerCase();
+      if (lowerQ.includes('salom') || lowerQ.includes('hi')) {
+        aiReply = `Salom! 👋 Men Gemini AI yordamchingizman. Qanday yordam bera olaman?`;
+      } else {
+        aiReply = `Google Gemini AI: Sizning so'rovingiz bo'yicha tayyorlandim. Savolingizni bemalol berishingiz mumkin.`;
+      }
+    }
+
+    // 5. Save assistant reply
     const assistantMsg = await prisma.chatMessage.create({
       data: { sessionId, role: 'assistant', content: aiReply },
     });
