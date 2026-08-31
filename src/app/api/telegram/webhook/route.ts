@@ -1,25 +1,95 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getGroqApiKey, getGeminiApiKey } from '@/lib/ai-config';
 
 export const dynamic = 'force-dynamic';
 
-const BOT_TOKEN  = process.env.TELEGRAM_BOT_TOKEN || '';
-const APP_URL    = process.env.NEXT_PUBLIC_APP_URL || 'https://second-brain-ai-uob8.onrender.com';
-const GEMINI_KEY = process.env.GEMINI_API_KEY || 'AIzaSyBDqKK1Ki3PElFylbqKLXz_gTuhLrA50zk';
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const APP_URL   = process.env.NEXT_PUBLIC_APP_URL || 'https://second-brain-ai-uob8.onrender.com';
 
-// ── Smart PARA Parser ─────────────────────────────────────────────────────────
+async function sendTelegram(chatId: number | string, text: string, extra: Record<string, any> = {}) {
+  if (!BOT_TOKEN) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        ...extra,
+      }),
+    });
+  } catch (err) {
+    console.error('sendTelegram error:', err);
+  }
+}
+
+// Multi-LLM AI Query Function (Groq -> Gemini)
+async function queryAI(prompt: string): Promise<string> {
+  const systemPrompt = `Siz Second Brain AI botisiz. Telegramda o'zbek tilida erkin, samimiy, aqlli va TARTIBLI javob bering.`;
+
+  // 1. Groq API
+  const groqKey = getGroqApiKey();
+  if (groqKey && groqKey.startsWith('gsk_')) {
+    try {
+      const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`,
+          'User-Agent': 'SecondBrainBot/1.0',
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-oss-120b',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.7,
+        }),
+      });
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        const text = gData.choices?.[0]?.message?.content;
+        if (text) return text;
+      }
+    } catch (e) {}
+  }
+
+  // 2. Gemini Fallback
+  const geminiKey = getGeminiApiKey();
+  if (geminiKey) {
+    try {
+      const contents = [
+        { role: 'user', parts: [{ text: systemPrompt }] },
+        { role: 'user', parts: [{ text: prompt }] },
+      ];
+      const gRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents }),
+        }
+      );
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        return gData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      }
+    } catch (e) {}
+  }
+
+  return '🤖 AI Javob tayyorlashda xatolik yuz berdi.';
+}
+
 const PREFIXES: Record<string, [string, string]> = {
   '📌': ['PROJECT', 'Loyiha'], '🎯': ['PROJECT', 'Vazifa'], '🚀': ['PROJECT', 'Loyiha'],
   'loyiha:': ['PROJECT', 'Loyiha'], 'project:': ['PROJECT', 'Loyiha'],
-  'vazifa:': ['PROJECT', 'Vazifa'], 'task:': ['PROJECT', 'Vazifa'],
-  '🌍': ['AREA', 'Soha'], 'soha:': ['AREA', 'Soha'], 'area:': ['AREA', 'Soha'],
-  '💡': ['RESOURCE', 'Goya'], '📚': ['RESOURCE', 'Kitob'], '🔗': ['RESOURCE', 'Havola'],
-  '📖': ['RESOURCE', 'Resurs'], "g'oya:": ['RESOURCE', 'Goya'], 'goya:': ['RESOURCE', 'Goya'],
-  'idea:': ['RESOURCE', 'Goya'], 'kitob:': ['RESOURCE', 'Kitob'], 'book:': ['RESOURCE', 'Kitob'],
-  'url:': ['RESOURCE', 'Havola'], 'link:': ['RESOURCE', 'Havola'],
-  'resurs:': ['RESOURCE', 'Resurs'], 'resource:': ['RESOURCE', 'Resurs'],
-  '📝': ['RESOURCE', 'Eslatma'], 'eslatma:': ['RESOURCE', 'Eslatma'], 'note:': ['RESOURCE', 'Eslatma'],
-  '💰': ['RESOURCE', 'Moliya'], 'kirim:': ['RESOURCE', 'Kirim'], 'chiqim:': ['RESOURCE', 'Chiqim'],
+  '🌍': ['AREA', 'Soha'], 'soha:': ['AREA', 'Soha'],
+  '💡': ['RESOURCE', 'Goya'], '📚': ['RESOURCE', 'Kitob'], '📖': ['RESOURCE', 'Resurs'],
+  'g\'oya:': ['RESOURCE', 'Goya'], 'kitob:': ['RESOURCE', 'Kitob'],
+  '📝': ['RESOURCE', 'Eslatma'], 'eslatma:': ['RESOURCE', 'Eslatma'], 'qayd:': ['RESOURCE', 'Qayd'],
 };
 
 function parseMessage(text: string): [string, string, string] {
@@ -33,50 +103,12 @@ function parseMessage(text: string): [string, string, string] {
   return ['RESOURCE', 'Eslatma', text];
 }
 
-async function queryGemini(prompt: string): Promise<string> {
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_KEY}`;
-    const payload = {
-      contents: [
-        { role: 'user', parts: [{ text: "Siz Telegram bot yordamchisiz. O'zbek tilida erkin, samimiy va javob bering." }] },
-        { role: 'user', parts: [{ text: prompt }] },
-      ],
-    };
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    }
-  } catch (e) {
-    console.error('Gemini webhook query error:', e);
-  }
-  return '';
-}
-
-async function sendTelegram(chatId: number | string, text: string, extra?: object) {
-  if (!BOT_TOKEN) return;
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: 'HTML',
-      ...extra,
-    }),
-  }).catch(() => {});
-}
-
 export async function POST(request: Request) {
   try {
     const update = await request.json();
-    if (!update.message) return NextResponse.json({ ok: true });
+    const msg = update.message || update.edited_message;
+    if (!msg || !msg.text) return NextResponse.json({ ok: true });
 
-    const msg        = update.message;
     const chatId     = msg.chat.id;
     const text       = (msg.text || '').trim();
     const fromUser   = msg.from || {};
@@ -100,12 +132,12 @@ export async function POST(request: Request) {
     // /start
     if (text.startsWith('/start')) {
       await sendTelegram(chatId,
-        `Salom <b>${firstName}</b>! 👋\n\n🧠 <b>Second Brain AI Bot</b>\n\n🤖 <b>AI Bilan Chatlashish:</b>\n<code>/ai [savolingiz]</code> — Google Gemini AI bilan gaplashish\n\n<b>Buyruqlar:</b>\n/report — Bugungi hisobot\n/stats — Statistika\n/help — Qo'llanma`,
+        `Salom <b>${firstName}</b>! 👋\n\n🤖 <b>Second Brain AI Chatbot</b>\n\n💡 Shunchaki xohlagan savolingizni yozing — AI darhol muloqot qiladi va bazaga saqlaydi!`,
         {
           reply_markup: {
             inline_keyboard: [
               [{ text: '🧠 Second Brain Mini App', web_app: { url: APP_URL } }],
-              [{ text: '💬 Gemini Web Chat', web_app: { url: `${APP_URL}/chat` } }],
+              [{ text: '💬 AI Web Chat', web_app: { url: `${APP_URL}/chat` } }],
             ],
           },
         }
@@ -113,24 +145,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // /ai command
-    if (text.startsWith('/ai') || text.startsWith('/gemini')) {
-      const parts = text.split(' ', 1);
-      const prompt = text.slice(parts[0].length).trim();
-      if (!prompt) {
-        await sendTelegram(chatId, "🤖 <code>/ai [savolingiz]</code> deb yozing.\nMasalan: <code>/ai Python o'rganish bo'yicha maslahat ber</code>");
-        return NextResponse.json({ ok: true });
-      }
-
-      await sendTelegram(chatId, "⏳ <i>Gemini AI o'ylamoqda...</i>");
-      const aiReply = await queryGemini(prompt);
-      await sendTelegram(chatId, `🤖 <b>Gemini AI:</b>\n\n${aiReply || 'Javob tayyorlashda xatolik.'}`, {
-        reply_markup: { inline_keyboard: [[{ text: '💬 Web Chatda Ochish', web_app: { url: `${APP_URL}/chat` } }]] },
-      });
-      return NextResponse.json({ ok: true });
-    }
-
-    // Smart save
+    // Smart save & Direct AI Answer
     const [paraCategory, tag, cleanText] = parseMessage(text);
 
     try {
@@ -160,16 +175,18 @@ export async function POST(request: Request) {
       });
     } catch (e) {}
 
-    if (text.endsWith('?') || text.length > 20) {
-      const aiReply = await queryGemini(cleanText);
-      if (aiReply) {
-        await sendTelegram(chatId, `🤖 <b>Gemini AI:</b>\n\n${aiReply}`);
-        return NextResponse.json({ ok: true });
-      }
-    }
-
+    // Direct Seamless AI Reply for every message
+    const aiReply = await queryAI(cleanText);
     const catEmoji: Record<string, string> = { PROJECT: '🎯', AREA: '🌍', RESOURCE: '💡' };
-    await sendTelegram(chatId, `✅ <b>Saqlandi!</b> ${catEmoji[paraCategory] || '📝'} [${paraCategory}] ${cleanText.slice(0, 50)}`);
+
+    await sendTelegram(chatId, `🤖 <b>AI Javobi:</b>\n\n${aiReply}\n\n<i>${catEmoji[paraCategory] || '✅'} Baza saqlandi [${paraCategory}]</i>`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💬 Web Chatda Ochish', web_app: { url: `${APP_URL}/chat` } }],
+          [{ text: '🧠 Second Brain Mini App', web_app: { url: APP_URL } }],
+        ],
+      },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {
@@ -180,6 +197,6 @@ export async function POST(request: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    status: 'Telegram Gemini Webhook is active',
+    status: 'Telegram Gemini & Groq Webhook is active',
   });
 }

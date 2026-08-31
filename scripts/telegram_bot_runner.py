@@ -67,8 +67,8 @@ def send_message(chat_id, text, parse_mode="HTML", reply_markup=None):
 # ── Multi-LLM AI Query Function (Groq -> Gemini) ──────────────────────────────
 def query_ai(prompt):
     system_prompt = (
-        "Siz Second Brain AI botisiz. Telegramda o'zbek tilida TARTIBLI, BOSQICHMA-BOSQICH (1, 2, 3 va bullet pointlar bilan) "
-        "erkin, intellektual va do'stona javob bering. Javobni chiroyli strukturada taqdim eting."
+        "Siz Second Brain AI botisiz. Foydalanuvchining har qanday savoliga va muloqotiga Telegramda o'zbek tilida "
+        "erkin, samimiy, intellektual va TARTIBLI javob bering. /ai kabi buyruq shart emas, to'g'ridan-to'g'ri do'stona va aqlli javob bering."
     )
 
     # 1. Groq API Call
@@ -265,7 +265,7 @@ def send_daily_report(chat_id_override=None):
     reply_markup = {
         "inline_keyboard": [
             [{"text": "📱 Second Brain Mini App", "web_app": {"url": APP_URL}}],
-            [{"text": "💬 Gemini AI Chat", "web_app": {"url": f"{APP_URL}/chat"}}],
+            [{"text": "💬 AI Chatbot", "web_app": {"url": f"{APP_URL}/chat"}}],
         ]
     }
     result = send_message(target, msg, reply_markup=reply_markup)
@@ -293,8 +293,7 @@ def send_webapp_buttons(chat_id, text_body):
     reply_markup = {
         "inline_keyboard": [
             [{"text": "🧠 Second Brain Mini App", "web_app": {"url": APP_URL}}],
-            [{"text": "💬 Gemini AI Chatbot", "web_app": {"url": f"{APP_URL}/chat"}}],
-            [{"text": "🌐 Saytni ochish", "url": APP_URL}],
+            [{"text": "💬 AI Chatbot (Saytda)", "web_app": {"url": f"{APP_URL}/chat"}}],
         ]
     }
     send_message(chat_id, text_body, reply_markup=reply_markup)
@@ -302,51 +301,40 @@ def send_webapp_buttons(chat_id, text_body):
 def handle_start(chat_id, first_name):
     msg = (
         f"Salom <b>{first_name}</b>! 👋\n\n"
-        f"🧠 <b>Second Brain AI Bot</b> — O'zbek tili Neural Knowledge System\n\n"
-        f"🤖 <b>AI Bilan Chatlashish:</b>\n"
-        f"<code>/ai [savolingiz]</code> — Groq AI / Gemini AI dan so'rash\n"
-        f"Masalan: <code>/ai Python kodi misoli</code>\n\n"
+        f"🤖 <b>Second Brain AI Chatbot</b> — Har qanday savolingizni berishingiz mumkin!\n\n"
+        f"💡 Xohlagan savolingizni yozing — AI darhol javob beradi va qayd sifatida saqlaydi.\n\n"
         f"<b>Buyruqlar:</b>\n"
         f"/start — Xush kelibsiz\n"
-        f"/help — Qo'llanma\n"
         f"/report — Bugungi hisobot 📊\n"
         f"/stats — Statistika 📈\n"
-        f"/habits — Odatlar 🏃\n\n"
-        f"Xabar yuborsangiz avtomatik Second Brain bazasiga saqlanadi!"
+        f"/habits — Odatlar 🏃"
     )
     send_webapp_buttons(chat_id, msg)
 
 def handle_help(chat_id):
     msg = (
-        f"ℹ️ <b>Yordam &amp; Qo'llanma</b>\n\n"
-        f"🤖 <b>AI Chatbot:</b>\n"
-        f"<code>/ai [savol]</code> — AI bilan gaplashish va tahlil olish\n\n"
-        f"<b>Buyruqlar:</b>\n"
-        f"/start — Mini app ilovasini ochish\n"
-        f"/report — Kunlik hisobot\n"
-        f"/stats — Umumiy statistika\n"
-        f"/habits — Odatlar holati\n\n"
-        f"<b>Smart saqlash:</b>\n"
-        f"📌 <code>Loyiha: [nom]</code> → PROJECT\n"
-        f"💡 <code>G'oya: [matn]</code> → RESOURCE\n"
-        f"📝 <code>Oddiy matn</code> → Eslatma"
+        f"ℹ️ <b>Yordam & Qo'llanma</b>\n\n"
+        f"🤖 <b>AI Chatbot bilan Muloqot:</b>\n"
+        f"Shunchaki xabar yuboring — AI javob beradi va saqlaydi.\n\n"
+        f"📌 <code>Loyiha: nom</code> → Loyihaga saqlash\n"
+        f"💡 <code>G'oya: matn</code> → G'oyaga saqlash"
     )
     send_message(chat_id, msg)
 
 def handle_ai(chat_id, prompt):
     if not prompt:
-        send_message(chat_id, "🤖 <code>/ai [savolingiz]</code> formatida yozing.\nMasalan: <code>/ai Meni tahlil qil</code>")
+        send_message(chat_id, "🤖 Savolingizni yozing, masalan: <code>Meni tahlil qil</code>")
         return
     send_message(chat_id, "⏳ <i>AI o'ylamoqda...</i>")
     answer = query_ai(prompt)
     reply_markup = {
         "inline_keyboard": [[{"text": "💬 Web Chatda Ochish", "web_app": {"url": f"{APP_URL}/chat"}}]]
     }
-    send_message(chat_id, f"🤖 <b>AI Javobi:</b>\n\n{answer}", parse_mode="Markdown", reply_markup=reply_markup)
+    send_message(chat_id, f"🤖 <b>AI Javobi:</b>\n\n{answer}", reply_markup=reply_markup)
 
 # ── Main Bot Loop ─────────────────────────────────────────────────────────────
 def run_bot():
-    print(f"🚀 Second Brain Telegram Bot ishga tushdi", flush=True)
+    print(f"🚀 Second Brain Telegram Bot (Direct Seamless AI Chat) ishga tushdi", flush=True)
     print(f"🌐 Web App URL: {APP_URL}", flush=True)
 
     scheduler_thread = threading.Thread(target=daily_report_scheduler, daemon=True)
@@ -405,17 +393,23 @@ def run_bot():
                     send_message(chat_id, f"📈 <b>Statistika:</b>\n📝 Qaydlar: {total_notes}\n🎯 Loyihalar: {total_proj}")
                     continue
 
-                # Default: Smart save + AI conversation answer
+                # Default: DIRECT AI CHAT + AUTO SAVE (Oson Chatbot Muloqoti)
                 para_cat, tag, clean_text = parse_message(text)
                 user_id = get_user_id_by_tg(tg_user_id) if tg_user_id else admin_user_id
-                saved = save_to_db(msg, para_cat, tag, clean_text, user_id)
+                save_to_db(msg, para_cat, tag, clean_text, user_id)
 
-                if text.endswith("?") or len(text.split()) > 3:
-                    ai_reply = query_ai(text)
-                    send_message(chat_id, f"🤖 <b>AI Javobi:</b>\n\n{ai_reply}")
-                else:
-                    emoji = CATEGORY_EMOJI.get(para_cat, "✅")
-                    send_message(chat_id, f"✅ <b>Saqlandi!</b> {emoji} [{para_cat}] {clean_text[:60]}")
+                ai_reply = query_ai(text)
+                cat_emoji = CATEGORY_EMOJI.get(para_cat, "✅")
+
+                reply_markup = {
+                    "inline_keyboard": [
+                        [{"text": "💬 AI Web Chatda Ochish", "web_app": {"url": f"{APP_URL}/chat"}}],
+                        [{"text": "🧠 Second Brain Mini App", "web_app": {"url": APP_URL}}],
+                    ]
+                }
+
+                response_text = f"🤖 <b>AI Javobi:</b>\n\n{ai_reply}\n\n<i>{cat_emoji} Baza saqlandi [{para_cat}]</i>"
+                send_message(chat_id, response_text, reply_markup=reply_markup)
 
         except KeyboardInterrupt:
             print("\n🛑 Bot to'xtatildi.", flush=True)
