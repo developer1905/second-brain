@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       includeNotes
         ? prisma.note.findMany({
-            take: isFull ? 500 : 150,
+            take: 1000,
             orderBy: { createdAt: 'desc' },
             include: { project: true, area: true },
           })
@@ -43,21 +43,21 @@ export async function GET(request: Request) {
         ? prisma.project.findMany({ include: { tasks: true, area: true } })
         : [],
       prisma.area.findMany(),
-      prisma.resource.findMany({ take: isFull ? 200 : 80 }),
+      prisma.resource.findMany({ take: 500 }),
       includeTelegram
         ? prisma.telegramMessage.findMany({
-            take: isFull ? 300 : 50,
+            take: 500,
             orderBy: { createdAt: 'desc' },
           })
         : [],
       includeGithub ? prisma.githubRepo.findMany() : [],
       includeBooks
-        ? prisma.book.findMany({ take: isFull ? 100 : 30 })
+        ? prisma.book.findMany({ take: 200 })
         : [],
-      // Finance/Habit/Flashcard only in full mode — heavy for default graph
-      includeHeavy ? prisma.transaction.findMany({ take: 100 }) : [],
-      includeHeavy ? prisma.habit.findMany() : [],
-      includeHeavy ? prisma.flashcard.findMany({ take: 100 }) : [],
+      // Finance/Habit/Flashcard included by default so all nodes appear
+      prisma.transaction.findMany({ take: 300, orderBy: { createdAt: 'desc' } }),
+      prisma.habit.findMany({ orderBy: { createdAt: 'desc' } }),
+      prisma.flashcard.findMany({ take: 300, orderBy: { createdAt: 'desc' } }),
       prisma.backlinkEdge.findMany(),
     ]);
 
