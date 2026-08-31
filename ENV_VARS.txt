@@ -1,7 +1,7 @@
 # Render.com Environment Variables
 # Bu faylni Render dashboard ga ko'chiring
 
-DATABASE_URL=file:./prisma/prod.db
+DATABASE_URL=file:./prod.db
 ADMIN_PASSWORD=admin2025
 TELEGRAM_BOT_TOKEN=8877395712:AAFMXyeqy31c3fccZxVdRw45CIJ_aAefz3g
 TELEGRAM_ADMIN_ID=6542040260

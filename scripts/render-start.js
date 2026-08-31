@@ -8,24 +8,30 @@ const fs = require('fs');
 const path = require('path');
 
 const PROD_DB    = path.join(__dirname, '..', 'prisma', 'prod.db');
+const DEV_DB     = path.join(__dirname, '..', 'prisma', 'dev.db');
 const INITIAL_DB = path.join(__dirname, '..', 'prisma', 'initial_data.db');
 const BLANK_DB   = path.join(__dirname, '..', 'prisma', 'blank_template.db');
 
-// 1. Har gal start bo'lganida agar prod.db kichik bo'lsa (yoki yo'q bo'lsa) initial_data.db dan nusxa olish
-const initialSize = fs.existsSync(INITIAL_DB) ? fs.statSync(INITIAL_DB).size : 0;
-const prodSize    = fs.existsSync(PROD_DB) ? fs.statSync(PROD_DB).size : 0;
+// 1. initial_data.db mavjud bo'lsa prod.db va dev.db ga nusxalash
+const sourceDb = fs.existsSync(INITIAL_DB) ? INITIAL_DB : BLANK_DB;
 
-if (!fs.existsSync(PROD_DB) || prodSize < 100000) {
-  const sourceDb = fs.existsSync(INITIAL_DB) ? INITIAL_DB : BLANK_DB;
-  if (fs.existsSync(sourceDb)) {
-    console.log(`📋 ${path.basename(sourceDb)} (${(fs.statSync(sourceDb).size / (1024*1024)).toFixed(1)}MB) dan prod.db nusxalanmoqda...`);
+if (fs.existsSync(sourceDb)) {
+  const sourceSize = fs.statSync(sourceDb).size;
+  console.log(`📋 ${path.basename(sourceDb)} (${(sourceSize / (1024*1024)).toFixed(1)}MB) dan prod.db va dev.db nusxalanmoqda...`);
+  
+  const prodSize = fs.existsSync(PROD_DB) ? fs.statSync(PROD_DB).size : 0;
+  if (!fs.existsSync(PROD_DB) || prodSize < 100000) {
     fs.copyFileSync(sourceDb, PROD_DB);
-    console.log('✅ prod.db nusxalandi va muvaffaqiyatli tiklandi.');
-  } else {
-    console.log('⚠️ Baza nusxasi topilmadi.');
+    console.log('✅ prod.db nusxalandi va tiklandi.');
+  }
+
+  const devSize = fs.existsSync(DEV_DB) ? fs.statSync(DEV_DB).size : 0;
+  if (!fs.existsSync(DEV_DB) || devSize < 100000) {
+    fs.copyFileSync(sourceDb, DEV_DB);
+    console.log('✅ dev.db nusxalandi va tiklandi.');
   }
 } else {
-  console.log(`✅ prod.db mavjud (${(prodSize / (1024*1024)).toFixed(1)}MB), davom etilmoqda.`);
+  console.log('⚠️ Baza nusxasi topilmadi.');
 }
 
 // 2. Next.js serverni ishga tushirish (prisma db push BAJARILMAYDI — baza o'chib ketishini oldini olish uchun)
