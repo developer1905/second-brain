@@ -136,11 +136,21 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Source Ptichka Filter Panel */}
         <SourceFilterPanel onFilterChange={fetchGraphStats} />
 
+        {/* AI Power Hub Button */}
+        <button
+          onClick={() => router.push('/ai-tools')}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-pink-500/20 text-pink-300 border border-pink-500/40 hover:bg-pink-500/30 font-bold text-xs transition shrink-0"
+          title="⚡ AI Power Hub (5 Tools)"
+        >
+          <Sparkles className="w-4 h-4 text-pink-400 animate-pulse" />
+          <span className="hidden sm:inline">AI Power Hub</span>
+        </button>
+
         {/* AI Chatbot Button */}
         <button
           onClick={() => router.push('/chat')}
           className="p-1.5 sm:p-2 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition shrink-0"
-          title="AI Chatbot (Google Gemini & Groq AI)"
+          title="AI Chatbot"
         >
           <Brain className="w-4 h-4 text-cyan-400" />
         </button>
