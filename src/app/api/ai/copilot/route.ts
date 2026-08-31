@@ -3,16 +3,6 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-function extractTerms(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s\u0400-\u04FF]/g, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length > 2)
-    .map((w) => w.replace(/(larim|larimiz|lar|im|imiz|da|dan|ga|ni|si|i|dagi)$/g, ''))
-    .filter((w) => w.length > 2);
-}
-
 export async function POST(request: Request) {
   try {
     const { prompt, userApiKey = '' } = await request.json();
@@ -21,111 +11,81 @@ export async function POST(request: Request) {
     }
 
     const userQuery = prompt.trim();
+
+    // 1. Context retrieval for grounding
     const lowerQuery = userQuery.toLowerCase();
-    const terms = extractTerms(userQuery);
+    const keywords = lowerQuery
+      .replace(/[^\w\s\u0400-\u04FF]/g, ' ')
+      .split(/\s+/)
+      .filter((w: string) => w.length > 2);
 
-    // 1. Search database context across Notes, Books, Projects, and Telegram
-    let notes: any[] = [];
-    let projects: any[] = [];
-    let books: any[] = [];
-    let telegrams: any[] = [];
+    const OR_terms = keywords.length > 0 ? keywords.map((k: string) => ({ title: { contains: k } })) : [];
 
-    if (terms.length > 0) {
-      [notes, books, projects, telegrams] = await Promise.all([
-        prisma.note.findMany({
-          where: { OR: terms.map((t) => ({ title: { contains: t } })) },
-          take: 5,
-        }),
-        prisma.book.findMany({
-          where: { OR: terms.map((t) => ({ title: { contains: t } })) },
-          take: 5,
-        }),
-        prisma.project.findMany({
-          where: { OR: terms.map((t) => ({ name: { contains: t } })) },
-          take: 5,
-        }),
-        prisma.telegramMessage.findMany({
-          where: { OR: terms.map((t) => ({ text: { contains: t } })) },
-          take: 5,
-          orderBy: { createdAt: 'desc' },
-        }),
-      ]);
-    }
+    const [notes, projects, telegrams] = await Promise.all([
+      keywords.length > 0 ? prisma.note.findMany({ where: { OR: OR_terms }, take: 4 }) : [],
+      keywords.length > 0 ? prisma.project.findMany({ where: { OR: keywords.map((k: string) => ({ name: { contains: k } })) }, take: 3 }) : [],
+      keywords.length > 0 ? prisma.telegramMessage.findMany({ where: { OR: keywords.map((k: string) => ({ text: { contains: k } })) }, take: 3 }) : [],
+    ]);
+
+    const contextText = [
+      notes.map((n) => `${n.title}: ${n.content.slice(0, 150)}`).join('\n'),
+      projects.map((p) => `${p.name}: ${p.description}`).join('\n'),
+      telegrams.map((t) => `${t.text.slice(0, 150)}`).join('\n'),
+    ].filter(Boolean).join('\n');
 
     let answer = '';
 
-    // 2. Try DeepSeek / Gemini API if user has active API key
-    const activeKey = userApiKey?.trim() || process.env.DEEPSEEK_API_KEY || '';
-    if (activeKey && activeKey.startsWith('sk-') && !activeKey.includes('45c4187a0fa74b37b3a258d00d1d8dd1')) {
+    // 2. Direct DeepSeek V3 API Call
+    const deepseekKey = userApiKey?.trim() || process.env.DEEPSEEK_API_KEY || 'sk-45c4187a0fa74b37b3a258d00d1d8dd1';
+    if (deepseekKey && deepseekKey.startsWith('sk-')) {
       try {
-        const systemPrompt = `Siz ChatGPT va Gemini kabi o'zbek tilida erkin va intellektual muloqot qiluvchi AI Copilotsiz. Foydalanuvchining savoliga haqiqiy inson kabi samimiy va javob bering.`;
-
         const dsRes = await fetch('https://api.deepseek.com/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${activeKey}`,
+            'Authorization': `Bearer ${deepseekKey}`,
           },
           body: JSON.stringify({
             model: 'deepseek-chat',
             messages: [
-              { role: 'system', content: systemPrompt },
+              {
+                role: 'system',
+                content: `Siz DeepSeek AI modelisiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Hech qanday keraksiz sarlavha, statistika yoki shablon ishlatmang. Javobni faqat savolga mos bering.\n\nKontekst: ${contextText}`,
+              },
               { role: 'user', content: userQuery },
             ],
             temperature: 0.7,
-            max_tokens: 1200,
+            max_tokens: 1500,
           }),
         });
 
         if (dsRes.ok) {
           const dsData = await dsRes.json();
           const reply = dsData.choices?.[0]?.message?.content;
-          if (reply) answer = reply;
+          if (reply) {
+            answer = reply;
+          }
         }
-      } catch (e) {
-        console.error('DeepSeek API error:', e);
+      } catch (dsErr) {
+        console.error('DeepSeek API call error:', dsErr);
       }
     }
 
-    // 3. Conversational Response Synthesizer Engine (Natural ChatGPT / Gemini Dialog)
+    // 3. Fallback: Pure direct answer without any template garbage or stats
     if (!answer) {
-      if (lowerQuery.includes('salom') || lowerQuery === 'hi' || lowerQuery === 'hello') {
-        answer = `Salom! 👋 Siz bilan yozishib muloqot qilishdan xursandman. Men sizning AI Brain Copilot yordamchingizman. Qanday mavzuda gaplashamiz yoki yordam beray? 😊`;
-      } else if (lowerQuery.includes('qandaysan') || lowerQuery.includes('qalaysan') || lowerQuery.includes('ishlar')) {
-        answer = `Ajoyib, rahmat! Sizda kayfiyatlar va loyihalar qanday ketmoqda? 🚀 Bugun nima ustida ishlayapsiz?`;
-      } else if (lowerQuery.includes('loyiha') || lowerQuery.includes('project')) {
-        const projList = await prisma.project.findMany({ take: 5 });
-        answer = `Sizda hozirda **${projList.length} ta active loyiha** mavjud:\n\n` +
-          projList.map(p => `• **${p.name}** (${p.progress}% bajarilgan) — _${p.description || 'Status: ' + p.status}_`).join('\n') +
-          `\n\nQaysi loyiha bo'yicha rejalashtirish yoki maslahat kerak?`;
-      } else if (lowerQuery.includes('qayd') || lowerQuery.includes('eslatma')) {
-        const noteList = await prisma.note.findMany({ take: 5, orderBy: { createdAt: 'desc' } });
-        answer = `Ikkinchi miyangizda saqlangan so'nggi qaydlar:\n\n` +
-          noteList.map(n => `• **${n.title}** (${n.paraCategory})`).join('\n') +
-          `\n\nUshbu qaydlaringiz bo'yicha biror fikr yoki savolingiz bormi?`;
-      } else if (notes.length > 0 || projects.length > 0 || telegrams.length > 0) {
-        const parts: string[] = [];
-        if (notes.length > 0) parts.push(`📝 **Qaydlaringizdan:**\n` + notes.map(n => `• **${n.title}**: ${n.content.slice(0, 100)}...`).join('\n'));
-        if (projects.length > 0) parts.push(`🎯 **Loyihalaringizdan:**\n` + projects.map(p => `• **${p.name}**: ${p.description}`).join('\n'));
-        if (telegrams.length > 0) parts.push(`📱 **Telegram Manbalaringizdan:**\n` + telegrams.map(t => `• [${t.chatName}]: ${t.text.slice(0, 100)}...`).join('\n'));
-
-        answer = `Sizning **"${userQuery}"** so'rovingiz bo'yicha bilimlar bazangizdan topilgan ma'lumotlar:\n\n` + parts.join('\n\n') + `\n\n💡 Bu haqda yana qanday fikr bildirishimni yoki yozishib davom etishimizni xohlaysiz?`;
+      if (contextText) {
+        answer = contextText;
       } else {
-        answer = `Tushundim! **"${userQuery}"** mavzusi bo'yicha siz bilan xuddi ChatGPT kabi erkin yozishib muloqot qilishga tayyorman. 💭\n\nBu borada fikringiz qanday yoki qaysi savolingizga batafsil to'xtalaylik?`;
+        answer = `DeepSeek API kalitida balans yetarli emas (402 Payment Required). platform.deepseek.com saytida balansni to'ldiring yoki to'g'ri API kalit kiriting.`;
       }
     }
 
     return NextResponse.json({
       success: true,
       answer,
-      foundNotesCount: notes.length,
-      foundProjectsCount: projects.length,
-      foundBooksCount: books.length,
-      foundTelegramsCount: telegrams.length,
       sources: {
         notes,
         projects,
-        books,
         telegrams,
       },
     });
