@@ -33,48 +33,49 @@ export async function POST(request: Request) {
 
     let answer = '';
 
-    const geminiKey = userApiKey?.trim() || process.env.GEMINI_API_KEY || 'AIzaSyBDqKK1Ki3PElFylbqKLXz_gTuhLrA50zk';
-    if (geminiKey) {
-      const geminiModels = ['gemini-flash-latest', 'gemini-pro-latest', 'gemini-2.5-flash'];
-      const contents = [
+    const openrouterKey = userApiKey?.trim() || process.env.OPENROUTER_API_KEY || '';
+    if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
+      const openrouterModels = ['openrouter/auto', 'deepseek/deepseek-r1:free', 'meta-llama/llama-3.3-70b-instruct:free'];
+      const messagesPayload = [
         {
-          role: 'user',
-          parts: [
-            {
-              text: `Siz Google Gemini AI Copilotsiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Hech qanday shablon yoki statistika qo'shmang.\n\nKontekst:\n${contextText}`,
-            },
-          ],
+          role: 'system',
+          content: `Siz OpenRouter va Second Brain AI Copilotsiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Hech qanday shablon yoki statistika qo'shmang.\n\nKontekst:\n${contextText}`,
         },
-        { role: 'user', parts: [{ text: userQuery }] },
+        { role: 'user', content: userQuery },
       ];
 
-      for (const model of geminiModels) {
+      for (const model of openrouterModels) {
         try {
-          const gRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents }),
-            }
-          );
+          const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openrouterKey}`,
+            },
+            body: JSON.stringify({
+              model,
+              messages: messagesPayload,
+              temperature: 0.7,
+              max_tokens: 1500,
+            }),
+          });
 
-          if (gRes.ok) {
-            const gData = await gRes.json();
-            const text = gData.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (orRes.ok) {
+            const orData = await orRes.json();
+            const text = orData.choices?.[0]?.message?.content;
             if (text) {
               answer = text;
               break;
             }
           }
         } catch (e) {
-          console.warn(`Gemini Copilot failed for ${model}:`, e);
+          console.warn(`OpenRouter Copilot failed for ${model}:`, e);
         }
       }
     }
 
     if (!answer) {
-      answer = `Assalomu aleykum! Men Gemini AI Copilot yordamchingizman. Savolingizni bemalol berishingiz mumkin. 😊`;
+      answer = `Assalomu aleykum! Men OpenRouter AI Copilot yordamchingizman. Savolingizni bemalol berishingiz mumkin. 😊`;
     }
 
     return NextResponse.json({
