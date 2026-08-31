@@ -42,18 +42,23 @@ export async function POST(req: NextRequest) {
 
     const userQuery = content.trim();
 
-    // 1. Filter out meta stop words from searchKeywords
+    // Check if user specifically mentioned a year (2020, 2021, 2022, 2023, 2024, 2025, 2026)
+    const yearMatch = userQuery.match(/202[0-6]/);
+    const targetYear = yearMatch ? yearMatch[0] : null;
+
+    // Filter out meta stop words from searchKeywords
     const stopWords = new Set([
       'haqida', 'bilan', 'nima', 'menga', 'mening', 'oqlib', 'ber', 'ayt', 'salom', 'qanday',
       'nimalar', 'gaplashganman', 'telegram', 'bot', 'xabar', 'xabarlarim', 'xabarlarimdan',
-      'bolgan', 'bolganlar', 'eng', 'muhim', 'muhimlarini', 'suhbatlarimdan', 'suhbatlarim', 'oqib'
+      'bolgan', 'bolganlar', 'eng', 'muhim', 'muhimlarini', 'suhbatlarimdan', 'suhbatlarim', 'oqib',
+      'yillar', 'yillardagi', 'yildagi', 'yil'
     ]);
 
     const searchWords = userQuery
       .toLowerCase()
       .replace(/[^\w\s\u0400-\u04FF]/gi, ' ')
       .split(/\s+/)
-      .filter((w) => w.length > 2 && !stopWords.has(w));
+      .filter((w) => w.length > 2 && !stopWords.has(w) && !w.match(/^202[0-6]$/));
 
     // Priority 1: Match by Chat Name / From Name (e.g. Kamol, Ramazon, etc.)
     const nameConditions = searchWords.map((w) => ({
@@ -75,21 +80,35 @@ export async function POST(req: NextRequest) {
       ],
     }));
 
-    // Fetch targeted chat matches with Person Name Priority
-    const [nameMatchedTg, textMatchedTg, matchedNotes, totalTgCount, allNotes, projects, transactions] = await Promise.all([
+    // Fetch targeted chat matches across ALL YEARS (2020 - 2026) using real Telegram message `date`
+    const [nameMatchedTg, textMatchedTg, yearMatchedTg, matchedNotes, totalTgCount, allNotes, projects, transactions] = await Promise.all([
       nameConditions.length > 0
         ? prisma.telegramMessage.findMany({
-            where: { OR: nameConditions.flatMap((c) => c.OR) },
-            take: 40,
-            orderBy: { createdAt: 'desc' },
+            where: {
+              OR: nameConditions.flatMap((c) => c.OR),
+              ...(targetYear ? { date: { contains: targetYear } } : {}),
+            },
+            take: 60,
+            orderBy: { date: 'desc' },
             select: { fromName: true, chatName: true, text: true, date: true },
           })
         : [],
       textConditions.length > 0
         ? prisma.telegramMessage.findMany({
-            where: { OR: textConditions },
-            take: 30,
-            orderBy: { createdAt: 'desc' },
+            where: {
+              OR: textConditions,
+              ...(targetYear ? { date: { contains: targetYear } } : {}),
+            },
+            take: 40,
+            orderBy: { date: 'desc' },
+            select: { fromName: true, chatName: true, text: true, date: true },
+          })
+        : [],
+      targetYear && nameConditions.length === 0 && textConditions.length === 0
+        ? prisma.telegramMessage.findMany({
+            where: { date: { contains: targetYear } },
+            take: 60,
+            orderBy: { date: 'desc' },
             select: { fromName: true, chatName: true, text: true, date: true },
           })
         : [],
@@ -111,12 +130,12 @@ export async function POST(req: NextRequest) {
       prisma.transaction.findMany({ take: 15, select: { title: true, amount: true, type: true } }),
     ]);
 
-    // Merge and deduplicate matched Telegram messages
+    // Merge and deduplicate matched Telegram messages from 2020-2026
     const mergedTgMsgsMap = new Map<string, typeof nameMatchedTg[0]>();
-    nameMatchedTg.forEach((m) => mergedTgMsgsMap.set(`${m.chatName}:${m.text}`, m));
-    textMatchedTg.forEach((m) => {
-      if (!mergedTgMsgsMap.has(`${m.chatName}:${m.text}`)) {
-        mergedTgMsgsMap.set(`${m.chatName}:${m.text}`, m);
+    [...nameMatchedTg, ...textMatchedTg, ...yearMatchedTg].forEach((m) => {
+      const key = `${m.date?.slice(0, 10)}:${m.chatName}:${m.text.slice(0, 40)}`;
+      if (!mergedTgMsgsMap.has(key)) {
+        mergedTgMsgsMap.set(key, m);
       }
     });
     const finalMatchedTgMsgs = Array.from(mergedTgMsgsMap.values());
@@ -124,9 +143,9 @@ export async function POST(req: NextRequest) {
     const income = transactions.filter((t) => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
     const expense = transactions.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
 
-    // Format Targeted Search Matches
+    // Format Targeted Search Matches with Real Telegram Dates (2020-2026)
     const searchTgResultFormatted = finalMatchedTgMsgs.length > 0
-      ? finalMatchedTgMsgs.map((m) => `• [${m.date?.slice(0, 10) || 'Telegram'}] ${m.chatName || m.fromName}: "${m.text}"`).join('\n')
+      ? finalMatchedTgMsgs.map((m) => `• [SANA: ${m.date?.slice(0, 10) || '2020-2026'}] ${m.chatName || m.fromName}: "${m.text}"`).join('\n')
       : "So'rov kalit so'zi bo'yicha maxsus Telegram suhbatlari topilmadi.";
 
     const searchNoteResultFormatted = matchedNotes.length > 0
@@ -136,13 +155,13 @@ export async function POST(req: NextRequest) {
     const generalNoteList = allNotes.map((n) => `• [${n.paraCategory}] ${n.title}: ${n.content}`).join('\n');
     const projectList = projects.map((p) => `• ${p.name} (${p.status} - ${p.progress}%)`).join('\n');
 
-    const systemMsg = `Siz Second Brain OpenRouter AI yordamchisiz. Foydalanuvchining 70,500+ ma'lumotlar arxivi va Telegram suhbatlariga 100% to'liq chuqur qidiruv huquqiga egasiz.
+    const systemMsg = `Siz Second Brain OpenRouter AI yordamchisiz. Foydalanuvchining 2020, 2021, 2022, 2023, 2024, 2025 VA 2026-YILLARDAGI 70,500+ TELEGRAM SUHBATLARI ARXIVIGA 100% TO'LIQ VA CHUQUR KIRISH HUQUQIGA EGASIZ.
 
-FOYDALANUVCHINING 70,500+ TELEGRAM BAZASIDAGI SO'ROV BO'YICHA ANIQ MATCH SUHBATLARI:
-- Telegram Baza Arxivi: ${totalTgCount} ta xabar
+FOYDALANUVCHINING 2020-2026 YILLARDAGI 70,500+ TELEGRAM BAZASIDAN TOPILGAN REAL XABARLAR:
+- Telegram Baza Arxivi: 2020-yildan 2026-yilgacha bo'lgan ${totalTgCount} ta xabar
 - Moliya Balansi: Kirim ${income.toLocaleString()} so'm | Chiqim ${expense.toLocaleString()} so'm
 
-🔎 SO'ROV BO'YICHA TELEGRAM BAZASIDAN TOPILGAN ANIQ SUHBATLAR MATNI (${finalMatchedTgMsgs.length} ta xabar):
+🔎 SO'ROV BO'YICHA 2020-2026 YILLARDAGI TELEGRAM BAZASIDAN TOPILGAN ANIQ SUHBATLAR MATNLARI (${finalMatchedTgMsgs.length} ta xabar):
 ${searchTgResultFormatted}
 
 ${searchNoteResultFormatted ? `🔎 SO'ROV BO'YICHA TOPILGAN QAYDLAR:\n${searchNoteResultFormatted}\n` : ''}
@@ -152,7 +171,7 @@ ${generalNoteList}
 ${projectList}
 
 QOIDA:
-Yuqoridagi Telegram suhbatlari matnlariga va baza ma'lumotlariga tayanib, foydalanuvchining savoliga o'zbek tilida erkin, samimiy, aniq va TARTIBLI javob bering. Suhbatingizda o'sha shaxs bilan gaplashilgan aniq jumlalarni va mavzularni keltirib o'ting.`;
+Yuqoridagi 2020-yildan 2026-yilgacha bo'lgan Telegram suhbatlari matnlariga va sana ko'rsatkichlariga tayanib, foydalanuvchining savoliga o'zbek tilida erkin, samimiy, aniq va TARTIBLI javob bering. Javobingizda suhbat bo'lgan YIL va SANAlarni (masalan: 2020-yil, 2021-yil va hokazo) aniq ko'rsatib o'ting.`;
 
     // Save user message to database
     await prisma.chatMessage.create({

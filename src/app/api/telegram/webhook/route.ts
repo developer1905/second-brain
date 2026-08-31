@@ -39,17 +39,21 @@ function getMainMenuKeyboard() {
 
 async function getDatabaseFullContext(userQuery: string): Promise<string> {
   try {
+    const yearMatch = userQuery.match(/202[0-6]/);
+    const targetYear = yearMatch ? yearMatch[0] : null;
+
     const stopWords = new Set([
       'haqida', 'bilan', 'nima', 'menga', 'mening', 'oqlib', 'ber', 'ayt', 'salom', 'qanday',
       'nimalar', 'gaplashganman', 'telegram', 'bot', 'xabar', 'xabarlarim', 'xabarlarimdan',
-      'bolgan', 'bolganlar', 'eng', 'muhim', 'muhimlarini', 'suhbatlarimdan', 'suhbatlarim', 'oqib'
+      'bolgan', 'bolganlar', 'eng', 'muhim', 'muhimlarini', 'suhbatlarimdan', 'suhbatlarim', 'oqib',
+      'yillar', 'yillardagi', 'yildagi', 'yil'
     ]);
 
     const searchWords = userQuery
       .toLowerCase()
       .replace(/[^\w\s\u0400-\u04FF]/gi, ' ')
       .split(/\s+/)
-      .filter((w) => w.length > 2 && !stopWords.has(w));
+      .filter((w) => w.length > 2 && !stopWords.has(w) && !w.match(/^202[0-6]$/));
 
     // Priority 1: Match by Chat Name / From Name (e.g. Kamol, Ramazon, etc.)
     const nameConditions = searchWords.map((w) => ({
@@ -74,6 +78,7 @@ async function getDatabaseFullContext(userQuery: string): Promise<string> {
     const [
       nameMatchedTg,
       textMatchedTg,
+      yearMatchedTg,
       matchedNotes,
       totalTgMsgs,
       totalNotes,
@@ -83,17 +88,31 @@ async function getDatabaseFullContext(userQuery: string): Promise<string> {
     ] = await Promise.all([
       nameConditions.length > 0
         ? prisma.telegramMessage.findMany({
-            where: { OR: nameConditions.flatMap((c) => c.OR) },
-            take: 40,
-            orderBy: { createdAt: 'desc' },
+            where: {
+              OR: nameConditions.flatMap((c) => c.OR),
+              ...(targetYear ? { date: { contains: targetYear } } : {}),
+            },
+            take: 60,
+            orderBy: { date: 'desc' },
             select: { fromName: true, chatName: true, text: true, date: true },
           })
         : [],
       textConditions.length > 0
         ? prisma.telegramMessage.findMany({
-            where: { OR: textConditions },
-            take: 30,
-            orderBy: { createdAt: 'desc' },
+            where: {
+              OR: textConditions,
+              ...(targetYear ? { date: { contains: targetYear } } : {}),
+            },
+            take: 40,
+            orderBy: { date: 'desc' },
+            select: { fromName: true, chatName: true, text: true, date: true },
+          })
+        : [],
+      targetYear && nameConditions.length === 0 && textConditions.length === 0
+        ? prisma.telegramMessage.findMany({
+            where: { date: { contains: targetYear } },
+            take: 60,
+            orderBy: { date: 'desc' },
             select: { fromName: true, chatName: true, text: true, date: true },
           })
         : [],
@@ -114,10 +133,10 @@ async function getDatabaseFullContext(userQuery: string): Promise<string> {
 
     // Merge and deduplicate matched Telegram messages
     const mergedTgMsgsMap = new Map<string, typeof nameMatchedTg[0]>();
-    nameMatchedTg.forEach((m) => mergedTgMsgsMap.set(`${m.chatName}:${m.text}`, m));
-    textMatchedTg.forEach((m) => {
-      if (!mergedTgMsgsMap.has(`${m.chatName}:${m.text}`)) {
-        mergedTgMsgsMap.set(`${m.chatName}:${m.text}`, m);
+    [...nameMatchedTg, ...textMatchedTg, ...yearMatchedTg].forEach((m) => {
+      const key = `${m.date?.slice(0, 10)}:${m.chatName}:${m.text.slice(0, 40)}`;
+      if (!mergedTgMsgsMap.has(key)) {
+        mergedTgMsgsMap.set(key, m);
       }
     });
     const finalMatchedTgMsgs = Array.from(mergedTgMsgsMap.values());
@@ -126,7 +145,7 @@ async function getDatabaseFullContext(userQuery: string): Promise<string> {
     const expense = transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
 
     const searchTgFormatted = finalMatchedTgMsgs.length > 0
-      ? finalMatchedTgMsgs.map(m => `• [${m.date?.slice(0, 10) || 'Telegram'}] ${m.chatName || m.fromName}: "${m.text}"`).join('\n')
+      ? finalMatchedTgMsgs.map(m => `• [SANA: ${m.date?.slice(0, 10) || '2020-2026'}] ${m.chatName || m.fromName}: "${m.text}"`).join('\n')
       : "So'rov bo'yicha Telegram suhbatlaridan alohida natijalar topilmadi.";
 
     const searchNoteFormatted = matchedNotes.length > 0
@@ -136,12 +155,12 @@ async function getDatabaseFullContext(userQuery: string): Promise<string> {
     const noteSummary = allNotes.map(n => `• [${n.paraCategory}] Sarlavha: "${n.title}" | Matn: "${n.content}"`).join('\n');
     const projectSummary = projects.map(p => `• Loyiha: "${p.name}" (${p.status} - ${p.progress}%)`).join('\n');
 
-    return `FOYDALANUVCHINING 70,500+ TELEGRAM SUHBATLARI BAZASI VA MATCH QIDIRUV NATIJASI:
-- Telegram Baza Arxivi: ${totalTgMsgs} ta xabar
+    return `FOYDALANUVCHINING 2020, 2021, 2022, 2023, 2024, 2025 VA 2026-YILLARDAGI 70,500+ TELEGRAM SUHBATLARI BAZASI:
+- Telegram Baza Arxivi: 2020-yildan 2026-yilgacha bo'lgan ${totalTgMsgs} ta xabar
 - Saqlangan Qaydlar Soni: ${totalNotes} ta
 - Moliyaviy Balans: Kirim ${income.toLocaleString()} so'm | Chiqim ${expense.toLocaleString()} so'm
 
-🔎 SO'ROV BO'YICHA TELEGRAM BAZASIDAN TOPILGAN ANIQ SUHBATLAR MATNI (${finalMatchedTgMsgs.length} ta xabar):
+🔎 SO'ROV BO'YICHA 2020-2026 YILLARDAGI TELEGRAM BAZASIDAN TOPILGAN ANIQ SUHBATLAR MATNLARI (${finalMatchedTgMsgs.length} ta xabar):
 ${searchTgFormatted}
 
 ${searchNoteFormatted ? `🔎 SO'ROV BO'YICHA TOPILGAN QAYDLAR:\n${searchNoteFormatted}\n` : ''}
@@ -154,14 +173,14 @@ ${projectSummary || 'Hozircha faol loyihalar mavjud emas'}`;
   }
 }
 
-// OpenRouter AI Engine (DeepSeek / Qwen) with 70,500+ Telegram Deep Search
+// OpenRouter AI Engine (DeepSeek / Qwen) with 2020-2026 Multi-Year Telegram Deep Search
 async function queryAI(prompt: string): Promise<string> {
   const dbContext = await getDatabaseFullContext(prompt);
-  const systemPrompt = `Siz Second Brain OpenRouter AI botisiz. Sizda foydalanuvchining 70,500+ Telegram suhbatlari, loyihalari, qaydlari va moliya balansiga 100% to'liq chuqur qidiruv va o'qish huquqi bor.
+  const systemPrompt = `Siz Second Brain OpenRouter AI botisiz. Sizda foydalanuvchining 2020, 2021, 2022, 2023, 2024, 2025 VA 2026-YILLARDAGI 70,500+ Telegram suhbatlariga 100% to'liq va chuqur qidiruv huquqi bor.
 
 ${dbContext}
 
-QOIDA: Foydalanuvchining savoliga uning 70,500+ Telegram suhbatlari va baza ma'lumotlariga tayangan holda o'zbek tilida erkin, samimiy, aniq va TARTIBLI javob bering. Suhbatingizda o'sha shaxs bilan gaplashilgan aniq jumlalarni va mavzularni keltirib o'ting.`;
+QOIDA: Foydalanuvchining savoliga uning 2020-2026 yillardagi Telegram suhbatlari va baza ma'lumotlariga tayangan holda o'zbek tilida erkin, samimiy, aniq va TARTIBLI javob bering. Javobingizda suhbat bo'lgan YIL va SANAlarni (masalan: 2020-yil, 2021-yil va hokazo) aniq ko'rsatib o'ting.`;
 
   const p1 = 'sk-or-v1-f0d6a20c52e0e728';
   const p2 = 'a4f9c3114a8a0d86ae1a19d2c1932e5fe28c0eea3d3f490c';
@@ -376,6 +395,6 @@ export async function POST(request: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    status: 'Telegram OpenRouter Webhook with Person Name Priority Search Engine is active',
+    status: 'Telegram OpenRouter Webhook with 2020-2026 Multi-Year Search Engine is active',
   });
 }
