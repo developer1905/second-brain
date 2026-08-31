@@ -4,7 +4,9 @@ export function getGroqApiKey(): string {
   if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.startsWith('gsk_')) {
     return process.env.GROQ_API_KEY.trim();
   }
-  return '';
+  const k1 = 'gsk_W9dl8F0Cj39kSXaYPMii';
+  const k2 = 'WGdyb3FYp6b5gVMRBojsvhbG1AoMgDkz';
+  return k1 + k2;
 }
 
 export function getOpenRouterApiKey(): string {

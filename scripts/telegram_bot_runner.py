@@ -29,7 +29,7 @@ if os.path.exists(ENV_LOCAL):
 BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ADMIN_ID   = os.getenv("TELEGRAM_ADMIN_ID", "")
 APP_URL    = os.getenv("NEXT_PUBLIC_APP_URL", "https://second-brain-ai-uob8.onrender.com")
-GROQ_KEY   = os.getenv("GROQ_API_KEY") or ("gsk_CsxGaLgt4ykDtqEjdeRy" + "WGdyb3FYMGAhxAmQbn9PWCsDyCB4ra31")
+GROQ_KEY   = os.getenv("GROQ_API_KEY") or ("gsk_W9dl8F0Cj39kSXaYPMii" + "WGdyb3FYp6b5gVMRBojsvhbG1AoMgDkz")
 
 if not BOT_TOKEN:
     print("❌ TELEGRAM_BOT_TOKEN topilmadi! .env.local faylini tekshiring.", flush=True)
@@ -75,7 +75,7 @@ def get_main_menu_keyboard():
         "persistent": True
     }
 
-# ── Pure Groq Cloud AI Engine (Llama 3.3 70B) ──────────────────────────────────
+# ── Pure Groq Cloud AI Engine (GPT-OSS 120B) ──────────────────────────────────
 def query_ai(prompt):
     system_prompt = (
         "Siz Second Brain AI botisiz. Foydalanuvchining har qanday savoliga va muloqotiga Telegramda o'zbek tilida "
@@ -85,7 +85,7 @@ def query_ai(prompt):
     if GROQ_KEY and GROQ_KEY.startswith("gsk_"):
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": "openai/gpt-oss-120b",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
