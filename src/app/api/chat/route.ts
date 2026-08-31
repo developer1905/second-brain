@@ -92,14 +92,7 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     // 1. OpenRouter API Engine (sk-or-v1-...) — 50+ Models Supported!
     const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
     if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
-      const openrouterModels = [
-        'openrouter/auto',
-        'z-ai/glm-5.2:free',
-        'dots-studio/dots-3-note-preview:free',
-        'liquid/lfm-2.5-2.6b:free',
-        'nvidia/nemotron-3.5-lightning:free',
-        'inclusionai/ling-3.0-flash-fin:free',
-      ];
+      const openrouterModels = ['openrouter/auto', 'openrouter/free'];
       for (const model of openrouterModels) {
         try {
           const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
