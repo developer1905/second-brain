@@ -11,8 +11,6 @@ export async function POST(request: Request) {
     }
 
     const userQuery = prompt.trim();
-
-    // 1. Context retrieval for grounding
     const lowerQuery = userQuery.toLowerCase();
     const keywords = lowerQuery
       .replace(/[^\w\s\u0400-\u04FF]/g, ' ')
@@ -35,48 +33,67 @@ export async function POST(request: Request) {
 
     let answer = '';
 
-    // 2. Direct DeepSeek V3 API Call
-    const deepseekKey = userApiKey?.trim() || process.env.DEEPSEEK_API_KEY || 'sk-45c4187a0fa74b37b3a258d00d1d8dd1';
-    if (deepseekKey && deepseekKey.startsWith('sk-')) {
-      try {
-        const dsRes = await fetch('https://api.deepseek.com/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${deepseekKey}`,
-          },
-          body: JSON.stringify({
-            model: 'deepseek-chat',
-            messages: [
-              {
-                role: 'system',
-                content: `Siz DeepSeek AI modelisiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Hech qanday keraksiz sarlavha, statistika yoki shablon ishlatmang. Javobni faqat savolga mos bering.\n\nKontekst: ${contextText}`,
-              },
-              { role: 'user', content: userQuery },
-            ],
-            temperature: 0.7,
-            max_tokens: 1500,
-          }),
-        });
+    // Google Gemini API call
+    const geminiKey = userApiKey?.trim() || process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
+    if (geminiKey && geminiKey.length > 8) {
+      const geminiModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-pro'];
+      const contents = [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `Siz Google Gemini AI yordamchisiz. O'zbek tilida erkin, aniq va to'g'ridan-to'g'ri javob bering. Hech qanday shablon yoki statistika qo'shmang.\n\nKontekst:\n${contextText}`,
+            },
+          ],
+        },
+        { role: 'user', parts: [{ text: userQuery }] },
+      ];
 
-        if (dsRes.ok) {
-          const dsData = await dsRes.json();
-          const reply = dsData.choices?.[0]?.message?.content;
-          if (reply) {
-            answer = reply;
+      for (const model of geminiModels) {
+        try {
+          let gRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents }),
+            }
+          );
+
+          if (!gRes.ok) {
+            gRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${geminiKey}`,
+                  'x-goog-api-key': geminiKey,
+                },
+                body: JSON.stringify({ contents }),
+              }
+            );
           }
+
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const text = gData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              answer = text;
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn(`Gemini Copilot failed for ${model}:`, e);
         }
-      } catch (dsErr) {
-        console.error('DeepSeek API call error:', dsErr);
       }
     }
 
-    // 3. Fallback: Pure direct answer without any template garbage or stats
     if (!answer) {
       if (contextText) {
         answer = contextText;
       } else {
-        answer = `DeepSeek API kalitida balans yetarli emas (402 Payment Required). platform.deepseek.com saytida balansni to'ldiring yoki to'g'ri API kalit kiriting.`;
+        answer = `Salom! Men sizning Gemini AI yordamchingizman. Savolingizni bemalol berishingiz mumkin.`;
       }
     }
 

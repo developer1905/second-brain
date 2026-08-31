@@ -13,8 +13,6 @@ services:
         value: file:./prisma/dev.db
       - key: ADMIN_PASSWORD
         value: admin2025
-      - key: DEEPSEEK_API_KEY
-        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: GOOGLE_GENERATIVE_AI_API_KEY
