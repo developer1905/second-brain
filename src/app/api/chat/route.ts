@@ -41,20 +41,65 @@ export async function POST(req: NextRequest) {
     }
 
     const userQuery = content.trim();
+    const lowerQuery = userQuery.toLowerCase();
 
-    // 1. Save user message to database
+    // Check if Telegram context or personal analysis is requested
+    const needsTelegramContext =
+      lowerQuery.includes('telegram') ||
+      lowerQuery.includes('tahlil') ||
+      lowerQuery.includes('analiz') ||
+      lowerQuery.includes('shaxsim') ||
+      lowerQuery.includes('qayd') ||
+      lowerQuery.includes('baza') ||
+      lowerQuery.includes('eslatma') ||
+      lowerQuery.includes('hisobot') ||
+      lowerQuery.includes('nima yozganman');
+
+    let telegramContext = '';
+    if (needsTelegramContext) {
+      const [recentTgMsgs, tgNotes] = await Promise.all([
+        prisma.telegramMessage.findMany({
+          take: 50,
+          orderBy: { createdAt: 'desc' },
+          select: { fromName: true, text: true, createdAt: true, paraCategory: true },
+        }),
+        prisma.note.findMany({
+          where: { sourceType: 'TELEGRAM' },
+          take: 30,
+          orderBy: { createdAt: 'desc' },
+          select: { title: true, content: true, paraCategory: true },
+        }),
+      ]);
+
+      const tgList = recentTgMsgs.map((m) => `[${m.fromName}]: ${m.text.slice(0, 100)}`).join('\n');
+      const noteList = tgNotes.map((n) => `[${n.paraCategory}] ${n.title}: ${n.content.slice(0, 100)}`).join('\n');
+
+      if (tgList || noteList) {
+        telegramContext = `
+=== FOYDALANUVCHINING TELEGRAM VA SECOND BRAIN MA'LUMOTLARI ===
+${tgList ? `--- So'nggi Telegram Xabarlari (${recentTgMsgs.length} ta) ---\n${tgList}` : ''}
+${noteList ? `--- Telegram Qaydlari (${tgNotes.length} ta) ---\n${noteList}` : ''}
+`;
+      }
+    }
+
+    // Save user message to database
     await prisma.chatMessage.create({
       data: { sessionId, role: 'user', content: userQuery },
     });
 
+    let systemMsg = "Siz Second Brain AI yordamchisiz. O'zbek tilida erkin, samimiy, intellektual va aniq javob bering.";
+    if (needsTelegramContext && telegramContext) {
+      systemMsg = `Siz Second Brain AI yordamchisiz. Foydalanuvchining Telegram va bazaviy ma'lumotlari quyida keltirilgan. Savolga ushbu real ma'lumotlar asosida aniq va tartibli javob bering:\n\n${telegramContext}`;
+    }
+
     let aiReply = '';
     const cleanUserKey = userApiKey?.trim() || '';
 
-    // 2. GROQ API (gsk_...) - High Speed GPT-OSS & Qwen Engine
+    // 1. GROQ API (gsk_...) - High Speed GPT-OSS & Qwen Engine
     const groqKey = cleanUserKey.startsWith('gsk_') ? cleanUserKey : getGroqApiKey();
     if (groqKey && groqKey.startsWith('gsk_')) {
-      const groqModels = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b', 'groq/compound'];
-      const systemMsg = "Siz Groq AI va Second Brain yordamchisiz. O'zbek tilida erkin, samimiy, intellektual va aniq javob bering. Hech qanday shablon yoki statistika qo'shmang.";
+      const groqModels = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
 
       for (const model of groqModels) {
         try {
@@ -83,17 +128,15 @@ export async function POST(req: NextRequest) {
               break;
             }
           }
-        } catch (e) {
-          console.warn(`Groq API model ${model} failed:`, e);
-        }
+        } catch (e) {}
       }
     }
 
-    // 3. OpenRouter API Fallback
+    // 2. OpenRouter API Fallback
     if (!aiReply) {
       const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
       if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
-        const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free', 'inclusionai/ling-3.0-flash-fin:free'];
+        const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free'];
         for (const model of openrouterModels) {
           try {
             const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -107,7 +150,7 @@ export async function POST(req: NextRequest) {
               body: JSON.stringify({
                 model,
                 messages: [
-                  { role: 'system', content: "Siz AI yordamchisiz. O'zbek tilida erkin va intellektual javob bering." },
+                  { role: 'system', content: systemMsg },
                   ...history.slice(-6).map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
                   { role: 'user', content: userQuery },
                 ],
@@ -127,13 +170,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Gemini Fallback
+    // 3. Gemini Fallback
     if (!aiReply) {
       const geminiKey = cleanUserKey.startsWith('AIzaSy') ? cleanUserKey : getGeminiApiKey();
       if (geminiKey) {
         try {
           const contents = [
-            { role: 'user', parts: [{ text: "Siz Google Gemini AI yordamchisiz. O'zbek tilida erkin javob bering." }] },
+            { role: 'user', parts: [{ text: systemMsg }] },
+            ...history.slice(-6).map((h) => ({
+              role: h.role === 'user' ? 'user' : 'model',
+              parts: [{ text: h.content }],
+            })),
             { role: 'user', parts: [{ text: userQuery }] },
           ];
 
@@ -155,25 +202,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (!aiReply) {
-      aiReply = `Salom! So'rovingiz bo'yicha tahlil tayyorlandi. "${userQuery}" masalasida qanday maslahat beray? 😊`;
+      aiReply = 'Javob berishda texnik xatolik yuz berdi.';
     }
 
-    // Save assistant reply
-    const assistantMsg = await prisma.chatMessage.create({
+    // Save assistant reply to database
+    await prisma.chatMessage.create({
       data: { sessionId, role: 'assistant', content: aiReply },
     });
 
-    return NextResponse.json({ message: assistantMsg });
-  } catch (err: any) {
-    console.error('Chat error:', err);
-    return NextResponse.json({ error: 'Chat xatosi: ' + err.message }, { status: 500 });
+    return NextResponse.json({ reply: aiReply });
+  } catch (error: any) {
+    console.error('Chat API error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
-
-export async function DELETE(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const sessionId = searchParams.get('sessionId');
-  if (!sessionId) return NextResponse.json({ error: 'sessionId required' }, { status: 400 });
-  await prisma.chatMessage.deleteMany({ where: { sessionId } });
-  return NextResponse.json({ ok: true });
 }
