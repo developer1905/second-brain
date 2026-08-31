@@ -62,23 +62,27 @@ async function getDatabaseFullContext(): Promise<string> {
     const income = transactions.filter(t => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
     const expense = transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
 
-    const tgSummary = recentTgMsgs.map(m => `• [${m.fromName}]: ${m.text.slice(0, 100)}`).join('\n');
-    const noteSummary = recentNotes.map(n => `• [${n.paraCategory}] ${n.title}`).join('\n');
-    const projectSummary = projects.map(p => `• ${p.name} (${p.status} - ${p.progress}%)`).join('\n');
+    const tgSummary = recentTgMsgs.map(m => `• [${m.fromName}]: ${m.text}`).join('\n');
+    const noteSummary = recentNotes.map(n => `• [${n.paraCategory}] SARLAVHA: "${n.title}" | TO'LIQ MATNI: "${n.content}"`).join('\n');
+    const projectSummary = projects.map(p => `• Loyiha: "${p.name}" (Status: ${p.status}, Bajarilishi: ${p.progress}%)`).join('\n');
+    const taskSummary = tasks.map(t => `• Vazifa: "${t.title}" (Holati: ${t.status})`).join('\n');
 
-    return `FOYDALANUVCHINING BARCHA SECOND BRAIN BAZASI MA'LUMOTLARI:
+    return `FOYDALANUVCHINING BARCHA SECOND BRAIN BAZASI MA'LUMOTLARI VA TO'LIQ MATNLARI:
 - Telegram Baza Arxivi: ${totalTgMsgs} ta xabar (70,000+ ma'lumotlar bazasi)
 - Saqlangan Qaydlar Soni: ${totalNotes} ta
 - Moliyaviy Balans: Kirim ${income.toLocaleString()} so'm | Chiqim ${expense.toLocaleString()} so'm
 
-- So'nggi Telegram Xabarlari:
+- So'nggi Telegram Xabarlari va Matnlari:
 ${tgSummary || 'Hali xabarlar mavjud emas'}
 
-- So'nggi Qaydlar:
+- Saqlangan Qaydlar va Ularning TO'LIQ MATNLARI:
 ${noteSummary || 'Hali qaydlar mavjud emas'}
 
 - Faol Loyihalar:
-${projectSummary || 'Hozircha faol loyihalar mavjud emas'}`;
+${projectSummary || 'Hozircha faol loyihalar mavjud emas'}
+
+- Bajarilayotgan Vazifalar:
+${taskSummary || 'Hozircha vazifalar mavjud emas'}`;
   } catch (e) {
     return 'Baza ma\'lumotlarini o\'qishda qisman xatolik bo\'ldi.';
   }

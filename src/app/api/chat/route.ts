@@ -68,9 +68,9 @@ export async function POST(req: NextRequest) {
     const income = transactions.filter((t) => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
     const expense = transactions.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
 
-    const tgList = recentTgMsgs.map((m) => `[${m.fromName}]: ${m.text.slice(0, 120)}`).join('\n');
-    const noteList = tgNotes.map((n) => `[${n.paraCategory}] ${n.title}: ${n.content.slice(0, 120)}`).join('\n');
-    const generalNoteList = allNotes.map((n) => `[${n.paraCategory}] ${n.title}`).join(' | ');
+    const tgList = recentTgMsgs.map((m) => `• [${m.fromName}]: ${m.text}`).join('\n');
+    const noteList = tgNotes.map((n) => `• [${n.paraCategory}] Sarlavha: "${n.title}" | Matni: "${n.content}"`).join('\n');
+    const generalNoteList = allNotes.map((n) => `• [${n.paraCategory}] Sarlavha: "${n.title}" | To'liq Matni: "${n.content}"`).join('\n');
     const projectList = projects.map((p) => `• ${p.name} (${p.status} - ${p.progress}%)`).join('\n');
 
     const systemMsg = `Siz Second Brain OpenRouter AI yordamchisiz. Foydalanuvchining 70,000+ ma'lumotlar arxivi, Telegrami va xotirasiga 100% to'liq kirish huquqiga egasiz.
