@@ -41,7 +41,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ onOpenQuickCapture }) => {
 
   const mainTabs = [
     { title: 'Grafik', href: '/', icon: Network, color: 'text-cyan-400' },
-    { title: 'Mind Chat', href: '/mind-analyzer', icon: Brain, color: 'text-cyan-400' },
+    { title: 'AI Chatbot', href: '/chat', icon: Brain, color: 'text-cyan-400' },
     { title: 'AI Copilot', href: '/ai-assistant', icon: MessageSquareText, color: 'text-purple-400' },
     { title: 'Sozlamalar', href: '/settings', icon: Sliders, color: 'text-amber-400' },
   ];
@@ -68,7 +68,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ onOpenQuickCapture }) => {
         { title: 'Aql Qidiruv', href: '/search', icon: Search, color: 'text-violet-400' },
         { title: 'Xotira Kutubxonasi', href: '/memory', icon: Brain, color: 'text-purple-400' },
         { title: 'Vaqt Jadvali', href: '/schedule', icon: Clock, color: 'text-amber-400' },
-        { title: '🪞 Mind Mirror AI Chatbot', href: '/mind-analyzer', icon: Brain, color: 'text-cyan-400' },
+        { title: '🤖 Gemini AI Chatbot', href: '/chat', icon: Brain, color: 'text-cyan-400' },
         { title: '🧠 AI Profil Tahlil', href: '/profile', icon: User, color: 'text-emerald-400' },
         { title: 'Plaginlar', href: '/plugins', icon: Puzzle, color: 'text-rose-400' },
       ],

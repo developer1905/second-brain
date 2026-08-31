@@ -136,11 +136,11 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Source Ptichka Filter Panel */}
         <SourceFilterPanel onFilterChange={fetchGraphStats} />
 
-        {/* Mind Chat Button */}
+        {/* AI Chatbot Button */}
         <button
-          onClick={() => router.push('/mind-analyzer')}
+          onClick={() => router.push('/chat')}
           className="p-1.5 sm:p-2 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition shrink-0"
-          title="Mind Mirror AI Chatbot"
+          title="AI Chatbot (Google Gemini & Groq AI)"
         >
           <Brain className="w-4 h-4 text-cyan-400" />
         </button>

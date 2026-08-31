@@ -54,7 +54,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { title: 'Odatlar (Streak)', href: '/habits', icon: Flame, color: 'text-amber-400', bg: 'bg-amber-500/10', badge: 'NEW' },
     { title: 'AI Flashcardlar', href: '/flashcards', icon: HelpCircle, color: 'text-violet-400', bg: 'bg-violet-500/10', badge: 'NEW' },
     { title: 'Kirim-Chiqim', href: '/finance', icon: Wallet, color: 'text-emerald-400', bg: 'bg-emerald-500/10', badge: 'MOLIYA' },
-    { title: 'Mind Mirror AI', href: '/mind-analyzer', icon: Brain, color: 'text-cyan-400', bg: 'bg-cyan-500/10', badge: 'TAHLIL' },
     { title: 'AI Yordamchi (Copilot)', href: '/ai-assistant', icon: MessageSquareText, color: 'text-cyan-400', bg: 'bg-cyan-500/10', badge: 'AI BOT' },
     { title: 'Smart Search', href: '/search', icon: Search, color: 'text-violet-400', bg: 'bg-violet-500/10', badge: 'NEW' },
     { title: 'Memory Library', href: '/memory', icon: Brain, color: 'text-purple-400', bg: 'bg-purple-500/10', badge: 'NEW' },
