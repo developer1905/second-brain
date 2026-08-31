@@ -89,43 +89,68 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     let aiReply = '';
     const cleanUserKey = userApiKey?.trim() || '';
 
-    // 1. GROQ API (gsk_...) - High Speed Qwen 3.8 27B & GPT-OSS Engine
-    const groqKey = cleanUserKey.startsWith('gsk_') ? cleanUserKey : getGroqApiKey();
-    if (groqKey && groqKey.startsWith('gsk_')) {
-      const groqModels = ['qwen/qwen3.8-27b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'];
-
-      for (const model of groqModels) {
-        try {
-          const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    // 1. Google Gemini API (AIzaSy...)
+    const geminiKey = cleanUserKey.startsWith('AIzaSy') ? cleanUserKey : getGeminiApiKey();
+    if (geminiKey && geminiKey.startsWith('AIzaSy')) {
+      try {
+        const fullPrompt = `${systemMsg}\n\nFOYDALANUVCHI SAVOLI:\n${userQuery}`;
+        const gRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+          {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${groqKey}`,
-              'User-Agent': 'SecondBrainAI/1.0',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model,
-              messages: [
-                { role: 'system', content: systemMsg },
-                ...history.slice(-6).map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
-                { role: 'user', content: userQuery },
-              ],
-              temperature: 0.7,
+              contents: [{ parts: [{ text: fullPrompt }] }],
             }),
-          });
-          if (gRes.ok) {
-            const gData = await gRes.json();
-            const text = gData.choices?.[0]?.message?.content;
-            if (text) {
-              aiReply = text;
-              break;
-            }
           }
-        } catch (e) {}
+        );
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const text = gData.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) aiReply = text;
+        }
+      } catch (e) {}
+    }
+
+    // 2. GROQ API (gsk_...) - High Speed Qwen 3.8 27B & GPT-OSS Engine
+    if (!aiReply) {
+      const groqKey = cleanUserKey.startsWith('gsk_') ? cleanUserKey : getGroqApiKey();
+      if (groqKey && groqKey.startsWith('gsk_')) {
+        const groqModels = ['qwen/qwen3.8-27b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'];
+
+        for (const model of groqModels) {
+          try {
+            const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${groqKey}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+              },
+              body: JSON.stringify({
+                model,
+                messages: [
+                  { role: 'system', content: systemMsg },
+                  ...history.slice(-6).map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
+                  { role: 'user', content: userQuery },
+                ],
+                temperature: 0.7,
+              }),
+            });
+            if (gRes.ok) {
+              const gData = await gRes.json();
+              const text = gData.choices?.[0]?.message?.content;
+              if (text) {
+                aiReply = text;
+                break;
+              }
+            }
+          } catch (e) {}
+        }
       }
     }
 
-    // 2. OpenRouter API Fallback
+    // 3. OpenRouter API Fallback
     if (!aiReply) {
       const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
       if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
@@ -164,12 +189,12 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     }
 
     if (!aiReply) {
-      aiReply = `⚠️ **Groq API Kalit Kiritilmagan yoki Xato (Limit Tugagan).**
+      aiReply = `⚠️ **AI Kaliti (Gemini yoki Groq) Kiritilmadi.**
 
-AI Chatbot tezkor va to'g'ri ishlashi uchun:
-1️⃣ **https://console.groq.com/keys** saytidan bepul yangi \`gsk_...\` kalit oling.
-2️⃣ Yangi kalitingizni shu yerga (chat tepadagi **API Key** oynasiga) yoki **[Sozlamalar](/settings)** sahifasiga kiriting.
-3️⃣ Kalit kiritishingiz bilanoq AI darhol muloqot qiladi va barcha ma'lumotlaringizni tahlil etadi! 🚀`;
+Oddiy va bepul Gemini API kalitini olish uchun:
+1️⃣ **https://aistudio.google.com/app/apikey** saytiga kiring (Google account bilan 1-chertishda kirasiz).
+2️⃣ **Create API Key** tugmasini bosib, \`AIzaSy...\` kalitingizni nusxalang.
+3️⃣ Kalitni chat tepadagi **API Key** katagiga yoki **[Sozlamalar](/settings)** sahifasiga kiriting. AI darhol ishlashni boshlaydi! 🚀`;
     }
 
     // Save assistant reply to database
