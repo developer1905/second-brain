@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     const userQuery = content.trim();
 
-    // Always fetch recent Telegram messages & notes to ensure 100% full context access
+    // Always fetch recent Telegram messages & notes for 100% full context access
     const [recentTgMsgs, tgNotes, allNotes] = await Promise.all([
       prisma.telegramMessage.findMany({
         take: 100,
@@ -89,7 +89,7 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     let aiReply = '';
     const cleanUserKey = userApiKey?.trim() || '';
 
-    // 1. GROQ API (gsk_...) - High Speed Llama 3.3 70B & Llama 3.1 Engine
+    // 1. GROQ API (gsk_...) - High Speed Llama 3.3 70B Engine
     const groqKey = cleanUserKey.startsWith('gsk_') ? cleanUserKey : getGroqApiKey();
     if (groqKey && groqKey.startsWith('gsk_')) {
       const groqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
@@ -129,7 +129,7 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     if (!aiReply) {
       const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
       if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
-        const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free'];
+        const openrouterModels = ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen-2.5-coder-32b-instruct:free'];
         for (const model of openrouterModels) {
           try {
             const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -164,7 +164,12 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     }
 
     if (!aiReply) {
-      aiReply = 'Groq AI modelidan javob olishda texnik xatolik yuz berdi. Iltimos Groq API keyni tekshiring.';
+      aiReply = `⚠️ **Groq API Kalit Kiritilmagan yoki Xato (Limit Tugagan).**
+
+AI Chatbot tezkor va to'g'ri ishlashi uchun:
+1️⃣ **https://console.groq.com/keys** saytidan bepul yangi \`gsk_...\` kalit oling.
+2️⃣ Yangi kalitingizni shu yerga (chat tepadagi **API Key** oynasiga) yoki **[Sozlamalar](/settings)** sahifasiga kiriting.
+3️⃣ Kalit kiritishingiz bilanoq AI darhol muloqot qiladi va barcha ma'lumotlaringizni tahlil etadi! 🚀`;
     }
 
     // Save assistant reply to database
