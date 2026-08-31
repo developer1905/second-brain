@@ -180,35 +180,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Gemini Fallback
     if (!answer) {
-      const geminiKey = cleanUserKey.startsWith('AIzaSy') ? cleanUserKey : getGeminiApiKey();
-      if (geminiKey) {
-        try {
-          const contents = [
-            { role: 'user', parts: [{ text: systemPrompt }] },
-            { role: 'user', parts: [{ text: userQuery }] },
-          ];
-
-          const gRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents }),
-            }
-          );
-
-          if (gRes.ok) {
-            const gData = await gRes.json();
-            answer = gData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          }
-        } catch (e) {}
-      }
-    }
-
-    if (!answer) {
-      answer = `Siz so'ragan shaxsiy tahlilingiz tayyorlandi. Tizimingizda ${notes.length} ta qayd, ${projects.length} ta loyiha bor. Qaysi yo'nalish bo'yicha chuqurroq tahlil kerak? 😊`;
+      answer = `Siz so'ragan shaxsiy tahlilingiz tayyorlandi. Qaysi yo'nalish bo'yicha chuqurroq tahlil kerak? 😊`;
     }
 
     return NextResponse.json({

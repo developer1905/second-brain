@@ -30,7 +30,6 @@ BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ADMIN_ID   = os.getenv("TELEGRAM_ADMIN_ID", "")
 APP_URL    = os.getenv("NEXT_PUBLIC_APP_URL", "https://second-brain-ai-uob8.onrender.com")
 GROQ_KEY   = os.getenv("GROQ_API_KEY") or ("gsk_CsxGaLgt4ykDtqEjdeRy" + "WGdyb3FYMGAhxAmQbn9PWCsDyCB4ra31")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY") or ("AIzaSyBDqKK1" + "Ki3PElFylbqKLXz_gTuhLrA50zk")
 
 if not BOT_TOKEN:
     print("❌ TELEGRAM_BOT_TOKEN topilmadi! .env.local faylini tekshiring.", flush=True)
@@ -64,14 +63,14 @@ def send_message(chat_id, text, parse_mode="HTML", reply_markup=None):
         payload["reply_markup"] = reply_markup
     return api_call("sendMessage", payload)
 
-# ── Multi-LLM AI Query Function (Groq -> Gemini) ──────────────────────────────
+# ── Pure Groq Cloud AI Engine (Llama 3.3 70B) ──────────────────────────────────
 def query_ai(prompt):
     system_prompt = (
         "Siz Second Brain AI botisiz. Foydalanuvchining har qanday savoliga va muloqotiga Telegramda o'zbek tilida "
         "erkin, samimiy, intellektual va TARTIBLI javob bering. /ai kabi buyruq shart emas, to'g'ridan-to'g'ri do'stona va aqlli javob bering."
     )
 
-    # 1. Groq API Call
+    # Groq Cloud API Call (Llama 3.3 70B Versatile)
     if GROQ_KEY and GROQ_KEY.startswith("gsk_"):
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
@@ -93,24 +92,7 @@ def query_ai(prompt):
         except Exception as e:
             print(f"Groq Telegram API error: {e}", flush=True)
 
-    # 2. Gemini Fallback
-    if GEMINI_KEY:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_KEY}"
-        payload = {
-            "contents": [
-                {"role": "user", "parts": [{"text": system_prompt}]},
-                {"role": "user", "parts": [{"text": prompt}]}
-            ]
-        }
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as e:
-            print(f"Gemini API Error: {e}", flush=True)
-
-    return f"🤖 AI Javob tayyorlashda xatolik yuz berdi."
+    return f"🤖 Groq AI Javob tayyorlashda xatolik yuz berdi."
 
 # ── Smart PARA Parser ─────────────────────────────────────────────────────────
 PREFIXES = {

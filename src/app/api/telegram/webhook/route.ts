@@ -25,11 +25,10 @@ async function sendTelegram(chatId: number | string, text: string, extra: Record
   }
 }
 
-// Multi-LLM AI Query Function (Groq -> Gemini)
+// Pure Groq Cloud AI Engine (Llama 3.3 70B)
 async function queryAI(prompt: string): Promise<string> {
   const systemPrompt = `Siz Second Brain AI botisiz. Telegramda o'zbek tilida erkin, samimiy, aqlli va TARTIBLI javob bering.`;
 
-  // 1. Groq API
   const groqKey = getGroqApiKey();
   if (groqKey && groqKey.startsWith('gsk_')) {
     try {
@@ -41,7 +40,7 @@ async function queryAI(prompt: string): Promise<string> {
           'User-Agent': 'SecondBrainBot/1.0',
         },
         body: JSON.stringify({
-          model: 'openai/gpt-oss-120b',
+          model: 'llama-3.3-70b-versatile',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },
@@ -57,30 +56,7 @@ async function queryAI(prompt: string): Promise<string> {
     } catch (e) {}
   }
 
-  // 2. Gemini Fallback
-  const geminiKey = getGeminiApiKey();
-  if (geminiKey) {
-    try {
-      const contents = [
-        { role: 'user', parts: [{ text: systemPrompt }] },
-        { role: 'user', parts: [{ text: prompt }] },
-      ];
-      const gRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents }),
-        }
-      );
-      if (gRes.ok) {
-        const gData = await gRes.json();
-        return gData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      }
-    } catch (e) {}
-  }
-
-  return '🤖 AI Javob tayyorlashda xatolik yuz berdi.';
+  return '🤖 Groq AI Javob tayyorlashda xatolik yuz berdi.';
 }
 
 const PREFIXES: Record<string, [string, string]> = {

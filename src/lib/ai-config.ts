@@ -19,10 +19,5 @@ export function getOpenRouterApiKey(): string {
 }
 
 export function getGeminiApiKey(): string {
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 10) {
-    return process.env.GEMINI_API_KEY.trim();
-  }
-  const g1 = 'AIzaSyBDqKK1';
-  const g2 = 'Ki3PElFylbqKLXz_gTuhLrA50zk';
-  return g1 + g2;
+  return process.env.GEMINI_API_KEY?.trim() || '';
 }

@@ -163,43 +163,8 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
       }
     }
 
-    // 3. Gemini Fallback with official system_instruction parameter
     if (!aiReply) {
-      const geminiKey = cleanUserKey.startsWith('AIzaSy') ? cleanUserKey : getGeminiApiKey();
-      if (geminiKey) {
-        try {
-          const payload = {
-            system_instruction: {
-              parts: [{ text: systemMsg }],
-            },
-            contents: [
-              ...history.slice(-6).map((h) => ({
-                role: h.role === 'user' ? 'user' : 'model',
-                parts: [{ text: h.content }],
-              })),
-              { role: 'user', parts: [{ text: userQuery }] },
-            ],
-          };
-
-          const gRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            }
-          );
-
-          if (gRes.ok) {
-            const gData = await gRes.json();
-            aiReply = gData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          }
-        } catch (e) {}
-      }
-    }
-
-    if (!aiReply) {
-      aiReply = 'Javob berishda texnik xatolik yuz berdi.';
+      aiReply = 'Groq AI modelidan javob olishda texnik xatolik yuz berdi. Iltimos Groq API keyni tekshiring.';
     }
 
     // Save assistant reply to database
