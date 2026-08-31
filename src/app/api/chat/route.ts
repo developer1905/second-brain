@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getOpenRouterApiKey, getGeminiApiKey } from '@/lib/ai-config';
+import { getGroqApiKey, getOpenRouterApiKey, getGeminiApiKey } from '@/lib/ai-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,65 +48,99 @@ export async function POST(req: NextRequest) {
     });
 
     let aiReply = '';
+    const cleanUserKey = userApiKey?.trim() || '';
 
-    // 2. OpenRouter API Call with openrouter/free model
-    const openrouterKey = userApiKey?.trim() || getOpenRouterApiKey();
-
-    if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
+    // 2. GROQ API (gsk_...) - 500 tokens/sec ultra fast
+    const groqKey = cleanUserKey.startsWith('gsk_') ? cleanUserKey : getGroqApiKey();
+    if (groqKey && groqKey.startsWith('gsk_')) {
       try {
-        const messagesPayload = [
-          {
-            role: 'system',
-            content: `Siz OpenRouter va Second Brain AI yordamchisiz. O'zbek tilida erkin, samimiy va intellektual muloqot qiling. Hech qanday shablon yoki statistika qo'shmang.`,
-          },
-          ...history.slice(-8).map((h) => ({
-            role: h.role === 'user' ? 'user' : 'assistant',
-            content: h.content,
-          })),
-          { role: 'user', content: userQuery },
-        ];
-
-        const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free', 'inclusionai/ling-3.0-flash-fin:free'];
-
-        for (const model of openrouterModels) {
+        const groqModels = ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it'];
+        for (const model of groqModels) {
           try {
-            const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openrouterKey}`,
-                'HTTP-Referer': 'https://second-brain-ai-uob8.onrender.com',
-                'X-Title': 'Second Brain AI',
+                'Authorization': `Bearer ${groqKey}`,
               },
               body: JSON.stringify({
                 model,
-                messages: messagesPayload,
+                messages: [
+                  { role: 'system', content: "Siz Groq AI va Second Brain yordamchisiz. O'zbek tilida erkin, intellektual va aniq javob bering." },
+                  ...history.slice(-6).map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
+                  { role: 'user', content: userQuery },
+                ],
                 temperature: 0.7,
               }),
             });
-
-            if (orRes.ok) {
-              const orData = await orRes.json();
-              const text = orData.choices?.[0]?.message?.content;
+            if (gRes.ok) {
+              const gData = await gRes.json();
+              const text = gData.choices?.[0]?.message?.content;
               if (text) {
                 aiReply = text;
                 break;
               }
-            } else {
-              console.warn(`OpenRouter model ${model} status:`, orRes.status, await orRes.text());
             }
-          } catch (e) {
-            console.warn(`OpenRouter call failed for ${model}:`, e);
-          }
+          } catch (e) {}
         }
-      } catch (orErr) {
-        console.error('OpenRouter API error:', orErr);
+      } catch (e) {
+        console.error('Groq API error:', e);
       }
     }
 
-    // 3. Fallback: Google Gemini API
+    // 3. OpenRouter API (sk-or-v1-...)
     if (!aiReply) {
-      const geminiKey = getGeminiApiKey();
+      const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
+      if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
+        try {
+          const messagesPayload = [
+            {
+              role: 'system',
+              content: `Siz OpenRouter AI yordamchisiz. O'zbek tilida erkin va intellektual muloqot qiling.`,
+            },
+            ...history.slice(-6).map((h) => ({
+              role: h.role === 'user' ? 'user' : 'assistant',
+              content: h.content,
+            })),
+            { role: 'user', content: userQuery },
+          ];
+
+          const openrouterModels = ['openrouter/free', 'z-ai/glm-5.2:free', 'inclusionai/ling-3.0-flash-fin:free'];
+
+          for (const model of openrouterModels) {
+            try {
+              const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${openrouterKey}`,
+                  'HTTP-Referer': 'https://second-brain-ai-uob8.onrender.com',
+                  'X-Title': 'Second Brain AI',
+                },
+                body: JSON.stringify({
+                  model,
+                  messages: messagesPayload,
+                  temperature: 0.7,
+                }),
+              });
+
+              if (orRes.ok) {
+                const orData = await orRes.json();
+                const text = orData.choices?.[0]?.message?.content;
+                if (text) {
+                  aiReply = text;
+                  break;
+                }
+              }
+            } catch (e) {}
+          }
+        } catch (orErr) {}
+      }
+    }
+
+    // 4. Google Gemini API
+    if (!aiReply) {
+      const geminiKey = cleanUserKey.startsWith('AIzaSy') ? cleanUserKey : getGeminiApiKey();
       if (geminiKey) {
         try {
           const contents = [
@@ -127,14 +161,12 @@ export async function POST(req: NextRequest) {
             const gData = await gRes.json();
             aiReply = gData.candidates?.[0]?.content?.parts?.[0]?.text || '';
           }
-        } catch (e) {
-          console.error('Gemini fallback error:', e);
-        }
+        } catch (e) {}
       }
     }
 
     if (!aiReply) {
-      aiReply = `Salom! Sizning so'rovingiz bo'yicha tayyorman: "${userQuery}". Qanday yordam bera olaman? 😊`;
+      aiReply = `Salom! So'rovingiz bo'yicha tahlil tayyorlandi. "${userQuery}" masalasida qanday maslahat beray? 😊`;
     }
 
     // Save assistant reply

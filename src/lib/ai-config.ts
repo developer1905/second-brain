@@ -1,5 +1,12 @@
 // Server-side AI Key Config Helper
 
+export function getGroqApiKey(): string {
+  if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.startsWith('gsk_')) {
+    return process.env.GROQ_API_KEY.trim();
+  }
+  return '';
+}
+
 export function getOpenRouterApiKey(): string {
   if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.startsWith('sk-or-')) {
     return process.env.OPENROUTER_API_KEY.trim();
