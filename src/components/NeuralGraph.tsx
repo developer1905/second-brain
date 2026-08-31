@@ -290,23 +290,49 @@ export const NeuralGraph: React.FC<NeuralGraphProps> = ({
       const centerX = width / 2;
       const centerY = height / 2;
 
+      // Dynamic theme color resolution
+      const currentTheme = typeof document !== 'undefined' ? (document.documentElement.getAttribute('data-theme') || 'cyberpunk-dark') : 'cyberpunk-dark';
+
+      let baseColor = '#090d16';
+      let grad0 = '#0f172a';
+      let grad5 = '#090d16';
+      let grad10 = '#04060a';
+      let dustColor = 'rgba(255, 255, 255, 0.04)';
+      let guideColor = 'rgba(0, 243, 255, 0.14)';
+
+      if (currentTheme === 'bootstrap-blue') {
+        baseColor = '#f8fafc';
+        grad0 = '#ffffff';
+        grad5 = '#f1f5f9';
+        grad10 = '#cbd5e1';
+        dustColor = 'rgba(13, 110, 253, 0.08)';
+        guideColor = 'rgba(13, 110, 253, 0.25)';
+      } else if (currentTheme === 'emerald-forest') {
+        baseColor = '#08140e';
+        grad0 = '#0e261b';
+        grad5 = '#08140e';
+        grad10 = '#030906';
+        dustColor = 'rgba(16, 185, 129, 0.08)';
+        guideColor = 'rgba(16, 185, 129, 0.25)';
+      }
+
       // Background — clearRect is fastest (canvas alpha:false)
-      ctx.fillStyle = '#090d16';
+      ctx.fillStyle = baseColor;
       ctx.fillRect(0, 0, width, height);
 
       // Deep space gradient overlay (skip on mobile for perf)
       if (!isMobile) {
         const bgGrad = ctx.createRadialGradient(centerX, centerY, 50, centerX, centerY, width / 1.1);
-        bgGrad.addColorStop(0, '#0f172a');
-        bgGrad.addColorStop(0.5, '#090d16');
-        bgGrad.addColorStop(1, '#04060a');
+        bgGrad.addColorStop(0, grad0);
+        bgGrad.addColorStop(0.5, grad5);
+        bgGrad.addColorStop(1, grad10);
         ctx.fillStyle = bgGrad;
         ctx.fillRect(0, 0, width, height);
       }
 
       // Background cosmic dust grid (skip on mobile)
       if (!isMobile) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.fillStyle = dustColor;
         for (let gx = 0; gx < width; gx += 45) {
           for (let gy = 0; gy < height; gy += 45) {
             ctx.fillRect(gx, gy, 1.2, 1.2);
@@ -514,12 +540,13 @@ export const NeuralGraph: React.FC<NeuralGraphProps> = ({
           const fontPx = isMobile
             ? Math.max(10, Math.round(11 * depthScale))
             : Math.max(9, Math.round(11 * depthScale));
-          ctx.font = isHovered ? `bold ${fontPx + 2}px sans-serif` : `${fontPx}px sans-serif`;
-          ctx.fillStyle = isHovered ? '#ffffff' : '#e2e8f0';
+          const defaultTextFill = currentTheme === 'bootstrap-blue' ? '#0f172a' : '#e2e8f0';
+          const hoverTextFill = currentTheme === 'bootstrap-blue' ? '#0b5ed7' : '#ffffff';
+          ctx.fillStyle = isHovered ? hoverTextFill : defaultTextFill;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          // Text shadow only on desktop
-          if (!isMobile) {
+          // Text shadow only on dark themes on desktop
+          if (!isMobile && currentTheme !== 'bootstrap-blue') {
             ctx.shadowColor = '#000000';
             ctx.shadowBlur = 4;
           }
