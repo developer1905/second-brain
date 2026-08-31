@@ -75,7 +75,7 @@ def query_ai(prompt):
     if GROQ_KEY and GROQ_KEY.startswith("gsk_"):
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
-            "model": "openai/gpt-oss-120b",
+            "model": "llama-3.3-70b-versatile",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
