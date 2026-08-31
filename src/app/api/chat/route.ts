@@ -93,9 +93,12 @@ Agar Telegram xabarlari 0 ta bo'lsa: "Tizimda Telegram ulangan, lekin hali botim
     const openrouterKey = cleanUserKey.startsWith('sk-or-') ? cleanUserKey : getOpenRouterApiKey();
     if (openrouterKey && openrouterKey.startsWith('sk-or-')) {
       const openrouterModels = [
-        'meta-llama/llama-3.3-70b-instruct:free',
-        'qwen/qwen-2.5-coder-32b-instruct:free',
-        'mistralai/mistral-7b-instruct:free',
+        'openrouter/auto',
+        'z-ai/glm-5.2:free',
+        'dots-studio/dots-3-note-preview:free',
+        'liquid/lfm-2.5-2.6b:free',
+        'nvidia/nemotron-3.5-lightning:free',
+        'inclusionai/ling-3.0-flash-fin:free',
       ];
       for (const model of openrouterModels) {
         try {
