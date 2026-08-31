@@ -12,6 +12,7 @@ import {
   BookOpen,
   Copy,
   Check,
+  Key,
   Mic,
   MicOff,
   Volume2,
@@ -42,18 +43,24 @@ export default function ChatPage() {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
 
-  // Voice Chat States
+  // Gemini API Key state
+  const [userApiKey, setUserApiKey] = useState<string>('');
+  const [showKeyInput, setShowKeyInput] = useState(false);
+
+  // Voice States
   const [isListening, setIsListening] = useState(false);
-  const [autoSpeak, setAutoSpeak] = useState(true);
+  const [autoSpeak, setAutoSpeak] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
 
-  // 1. Initialize Web Speech Recognition (Uzbek Language)
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const savedKey = localStorage.getItem('user_gemini_key') || '';
+      setUserApiKey(savedKey);
+
       const SpeechRecognition =
         (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -70,34 +77,27 @@ export default function ChatPage() {
           setInput(transcript);
         };
 
-        rec.onerror = (event: any) => {
-          console.warn('Voice recognition error:', event.error);
-          setIsListening(false);
-        };
-
-        rec.onend = () => {
-          setIsListening(false);
-        };
-
+        rec.onerror = () => setIsListening(false);
+        rec.onend = () => setIsListening(false);
         recognitionRef.current = rec;
       }
     }
   }, []);
 
-  // 2. Text-to-Speech Helper (Speak Uzbek / English)
+  const handleSaveApiKey = (val: string) => {
+    setUserApiKey(val);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('user_gemini_key', val);
+    }
+  };
+
   const speakText = (text: string, msgId?: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
-
     window.speechSynthesis.cancel();
 
-    const cleanText = text
-      .replace(/[*#_`~>-]/g, ' ')
-      .replace(/\n+/g, '. ')
-      .slice(0, 400);
-
+    const cleanText = text.replace(/[*#_`~>-]/g, ' ').replace(/\n+/g, '. ').slice(0, 400);
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = 1.0;
-    utterance.pitch = 1.0;
     utterance.lang = 'uz-UZ';
 
     utterance.onstart = () => msgId && setSpeakingId(msgId);
@@ -114,10 +114,9 @@ export default function ChatPage() {
     }
   };
 
-  // 3. Toggle Voice Listening
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      alert("Brauzeringizda ovozli kiritish qo'llab-quvvatlanmaydi (Chrome yoki Edge brauzeridan foydalaning).");
+      alert("Brauzeringizda ovozli kiritish qo'llab-quvvatlanmaydi. Chrome/Edge ishlatib ko'ring.");
       return;
     }
 
@@ -131,7 +130,7 @@ export default function ChatPage() {
         recognitionRef.current.start();
         setIsListening(true);
       } catch (e) {
-        console.error('Failed to start speech recognition:', e);
+        console.error(e);
       }
     }
   };
@@ -190,7 +189,7 @@ export default function ChatPage() {
       createdAt: new Date().toISOString(),
     };
 
-    const historyPayload = messages.slice(-6).map((m) => ({
+    const historyPayload = messages.slice(-8).map((m) => ({
       role: m.role,
       content: m.content,
     }));
@@ -203,7 +202,12 @@ export default function ChatPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: sid, content: text, history: historyPayload }),
+        body: JSON.stringify({
+          sessionId: sid,
+          content: text,
+          history: historyPayload,
+          userApiKey,
+        }),
       });
 
       if (res.ok) {
@@ -217,7 +221,7 @@ export default function ChatPage() {
         }
       }
     } catch (e) {
-      console.error('Send message error:', e);
+      console.error('Send error:', e);
     }
     setLoading(false);
   };
@@ -238,10 +242,10 @@ export default function ChatPage() {
   };
 
   const suggestions = [
-    "Salom, sen kimsan va nima qila olasan?",
-    "Mening loyihalarim va eslatmalarim haqida ayt",
-    "Bugungi diqqat markazim qaysi loyihada?",
-    "Menga o'zbek tilida maslahat ber",
+    "Salom Gemini! Menga ikkinchi miyamdagi loyihalarni aytib ber",
+    "Bugun qanday muhim vazifalar va eslatmalar bor?",
+    "Shaxsiy rivojlanish va vaqtni boshqarish bo'yicha maslahat ber",
+    "Telegram xabarlarimdan qanday g'oyalar topding?",
   ];
 
   return (
@@ -256,7 +260,7 @@ export default function ChatPage() {
             type="button"
             onClick={newSession}
             className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition border border-cyan-500/30"
-            title="Yangi suhbat"
+            title="Yangi Gemini suhbat boshlash"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -302,7 +306,7 @@ export default function ChatPage() {
 
       {/* ── Main Gemini Chat Panel ──────────────────────────── */}
       <div className="flex-1 flex flex-col glass-panel rounded-2xl border border-cyan-500/30 overflow-hidden min-w-0 shadow-2xl bg-slate-950/80">
-        {/* Header with Voice Mode Controls */}
+        {/* Header */}
         <div className="flex-shrink-0 px-4 py-3 border-b border-white/10 flex items-center justify-between flex-wrap gap-2 bg-slate-900/60">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500/20 via-purple-500/20 to-pink-500/20 border border-cyan-500/40 shadow-glowCyan">
@@ -310,23 +314,34 @@ export default function ChatPage() {
             </div>
             <div>
               <h1 className="text-sm font-extrabold text-white font-mono flex items-center gap-2">
-                GEMINI VOICE AI
+                GEMINI AI CHAT
                 <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[9px] font-sans">
-                  O'zbekcha Ovozli
+                  O'zbekcha Chat
                 </span>
               </h1>
               <p className="text-[11px] text-slate-400">
-                Xuddi Gemini kabi erkin suhbatlashing va ovozli tinglang
+                Xuddi Gemini kabi erkin yozishib muloqot qiling
               </p>
             </div>
           </div>
 
-          {/* Voice Mode Toggle Button */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Optional Gemini Key Button */}
+            <button
+              type="button"
+              onClick={() => setShowKeyInput(!showKeyInput)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-mono bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition"
+              title="Google Gemini API Key sozlash (Ixtiyoriy)"
+            >
+              <Key className="w-3 h-3 text-amber-400" />
+              <span>{userApiKey ? 'API Key Active ✓' : 'Gemini Key'}</span>
+            </button>
+
+            {/* Auto Voice Toggle */}
             <button
               type="button"
               onClick={() => setAutoSpeak(!autoSpeak)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition border ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold font-mono transition border ${
                 autoSpeak
                   ? 'bg-purple-500/20 text-purple-300 border-purple-500/40 shadow-glowPurple'
                   : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'
@@ -336,7 +351,7 @@ export default function ChatPage() {
               {autoSpeak ? (
                 <>
                   <Volume2 className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-                  <span>Ovozli Rejim ON</span>
+                  <span>Ovoz ON</span>
                 </>
               ) : (
                 <>
@@ -348,7 +363,24 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Messages Feed */}
+        {/* Optional Custom Gemini Key Input Bar */}
+        {showKeyInput && (
+          <div className="p-3 bg-slate-900/90 border-b border-amber-500/30 flex items-center gap-2 animate-in fade-in">
+            <Key className="w-4 h-4 text-amber-400 shrink-0" />
+            <input
+              type="password"
+              value={userApiKey}
+              onChange={(e) => handleSaveApiKey(e.target.value)}
+              placeholder="Google Gemini API Key (AIzaSy...) — Ixtiyoriy"
+              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/60"
+            />
+            <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+              Kalitsiz ham avtomatik ishlaydi
+            </span>
+          </div>
+        )}
+
+        {/* Chat Feed */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full space-y-6 py-8">
@@ -357,10 +389,10 @@ export default function ChatPage() {
               </div>
               <div className="text-center space-y-1 max-w-md">
                 <h2 className="text-xl font-extrabold text-white tracking-wide">
-                  Gemini Voice AI bilan Gaplashing
+                  Gemini Chat bilan Yozishib Gaplashing
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Ovozli tugmani (🎙️) bosib O'zbek tilida gapiring yoki matn yozing. AI ma'lumotlar bazangiz asosida erkin muloqot qiladi!
+                  Xuddi Google Gemini kabi o'zbek tilida bemalol yozishib muloqot qiling. Ikkinchi miyangizdagi barcha ma'lumotlar bilan boyitilgan!
                 </p>
               </div>
 
@@ -397,7 +429,6 @@ export default function ChatPage() {
                       </span>
                     </div>
 
-                    {/* Audio Playback Button */}
                     <button
                       type="button"
                       onClick={() =>
@@ -412,7 +443,7 @@ export default function ChatPage() {
                       {speakingId === msg.id ? (
                         <>
                           <Radio className="w-3 h-3 text-purple-400 animate-spin" />
-                          <span>Gapirmoqda...</span>
+                          <span>O'qilmoqda...</span>
                         </>
                       ) : (
                         <>
@@ -463,7 +494,7 @@ export default function ChatPage() {
               <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-slate-900/90 border border-cyan-500/30 shadow-glowCyan">
                 <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
                 <span className="text-xs text-cyan-300 font-mono">
-                  Gemini AI o'ylamoqda va javob tayyorlamoqda…
+                  Gemini AI o'ylamoqda va yozmoqda…
                 </span>
               </div>
             </div>
@@ -472,7 +503,7 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input Bar with Microphone Voice Button */}
+        {/* Input Bar */}
         <div className="flex-shrink-0 p-3 sm:p-4 border-t border-white/10 bg-slate-900/80">
           <div
             className={`flex items-end gap-2 p-2.5 sm:p-3 rounded-2xl border transition ${
@@ -481,7 +512,7 @@ export default function ChatPage() {
                 : 'bg-slate-950/80 border-white/10 focus-within:border-cyan-500/50'
             }`}
           >
-            {/* Microphone Voice Button */}
+            {/* Microphone Button */}
             <button
               type="button"
               onClick={toggleListening}
@@ -490,7 +521,7 @@ export default function ChatPage() {
                   ? 'bg-purple-600 text-white animate-bounce shadow-glowPurple'
                   : 'bg-white/5 text-slate-400 hover:text-cyan-300 hover:bg-white/10'
               }`}
-              title={isListening ? "Ovozli kiritishni to'xtatish" : "O'zbek tilida ovozli gapirish (Mikrofon)"}
+              title={isListening ? "To'xtatish" : "O'zbekcha ovozli kiritish (Mikrofon)"}
             >
               {isListening ? (
                 <MicOff className="w-4 h-4 text-white" />
@@ -511,8 +542,8 @@ export default function ChatPage() {
               }}
               placeholder={
                 isListening
-                  ? "🎙️ O'zbek tilida gapiring (eshitilmoqda)..."
-                  : "Gemini AI bilan erkin muloqot qiling… (Enter — yuborish)"
+                  ? "🎙️ O'zbekcha gapiring (eshitilmoqda)..."
+                  : "Gemini AI bilan yozishib gaplashing… (Enter — yuborish)"
               }
               className="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder-slate-400 resize-none outline-none min-h-[36px] max-h-32 font-medium"
               rows={1}
@@ -533,7 +564,7 @@ export default function ChatPage() {
             {isListening && (
               <span className="text-purple-400 font-bold animate-pulse flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
-                O'zbekcha Ovoz Eshitilmoqda...
+                O'zbekcha Eshitilmoqda...
               </span>
             )}
           </div>
